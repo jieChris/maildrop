@@ -13,6 +13,7 @@
 - API：每个邮箱前缀有独立 token 链接，可直接访问最新无格式邮件。
 - 未登记前缀：进入“未登记邮件”列表，不自动创建 alias。
 - 管理分类：后台按 `未导出`、`已导出`、`已删除` 管理邮箱别名。
+- 收件管理器：`/xxxmailmanage` 可导入邮箱和 API 链接，并标记 `待消耗`、`已消耗`、`错误`。
 - 当前生产状态：DNS 已切到 `mail.aiprot.space`，Postfix/Caddy/Maildrop 已通过生产检查和公网真实收信 smoke。
 
 ## Maildrop 文件
@@ -92,6 +93,23 @@ user002@aiprot.space https://aiprot.space/api/inbox/user002/latest.txt?token=...
 导出成功后，相关邮箱会进入 `已导出` 分类。未导出过的邮箱保留在 `未导出` 分类。
 
 后台支持软删除邮箱。删除后邮箱进入 `已删除` 分类，API 链接立即返回 403，历史邮件保留；后续发到该前缀的邮件会进入“未登记邮件”，原因记录为 `alias_deleted`。已删除邮箱不会被“导出全部”包含。
+
+## 收件管理器
+
+管理入口：
+
+```text
+https://aiprot.space/xxxmailmanage
+```
+
+使用和 `/admin` 相同的 Basic Auth。可以直接粘贴 Maildrop 导出的邮箱和 API 链接，支持以下格式：
+
+```text
+user001@aiprot.space https://aiprot.space/api/inbox/user001/latest.txt?token=...
+user002@aiprot.space----https://aiprot.space/api/inbox/user002/latest.txt?token=...
+```
+
+导入后每条记录可标记为 `待消耗`、`已消耗`、`错误`，也可以通过服务端请求 API 链接查看最新纯文本邮件。重复导入同一个邮箱会更新 API 链接，但保留原状态和备注。
 
 生产 Docker 启动已关闭 Uvicorn access log，避免 query token 写入应用访问日志。
 

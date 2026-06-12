@@ -8,9 +8,7 @@ from sqlalchemy import create_engine, inspect, text
 ROOT = Path(__file__).resolve().parents[2]
 
 
-def test_alembic_upgrade_adds_alias_lifecycle_columns_to_existing_schema(tmp_path):
-    database_path = tmp_path / "maildrop.db"
-    database_url = f"sqlite:///{database_path}"
+def create_pre_migration_aliases_schema(database_url: str) -> None:
     engine = create_engine(database_url, future=True)
     with engine.begin() as connection:
         connection.execute(
@@ -42,12 +40,19 @@ def test_alembic_upgrade_adds_alias_lifecycle_columns_to_existing_schema(tmp_pat
             )
         )
 
+
+def test_alembic_upgrade_adds_alias_lifecycle_columns_to_existing_schema(tmp_path):
+    database_path = tmp_path / "maildrop.db"
+    database_url = f"sqlite:///{database_path}"
+    create_pre_migration_aliases_schema(database_url)
+
     config = Config(str(ROOT / "alembic.ini"))
     config.set_main_option("script_location", str(ROOT / "migrations"))
     config.set_main_option("sqlalchemy.url", database_url)
 
     command.upgrade(config, "head")
 
+    engine = create_engine(database_url, future=True)
     inspector = inspect(engine)
     columns = {column["name"] for column in inspector.get_columns("aliases")}
     assert "exported_at" in columns
@@ -59,3 +64,30 @@ def test_alembic_upgrade_adds_alias_lifecycle_columns_to_existing_schema(tmp_pat
     assert row.prefix == "alpha"
     assert row.exported_at is None
     assert row.deleted_at is None
+
+
+def test_alembic_upgrade_creates_managed_inboxes_table(tmp_path):
+    database_path = tmp_path / "maildrop.db"
+    database_url = f"sqlite:///{database_path}"
+    create_pre_migration_aliases_schema(database_url)
+    config = Config(str(ROOT / "alembic.ini"))
+    config.set_main_option("script_location", str(ROOT / "migrations"))
+    config.set_main_option("sqlalchemy.url", database_url)
+
+    command.upgrade(config, "head")
+
+    engine = create_engine(database_url, future=True)
+    inspector = inspect(engine)
+    assert "managed_inboxes" in inspector.get_table_names()
+    columns = {column["name"] for column in inspector.get_columns("managed_inboxes")}
+    assert {
+        "email",
+        "api_url",
+        "status",
+        "note",
+        "last_preview",
+        "last_error",
+        "last_checked_at",
+        "created_at",
+        "updated_at",
+    }.issubset(columns)

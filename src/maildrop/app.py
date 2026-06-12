@@ -6,6 +6,7 @@ from ipaddress import ip_address, ip_network
 from pathlib import Path
 import secrets
 
+import httpx
 from fastapi import Depends, FastAPI, Form, Header, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, PlainTextResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
@@ -19,7 +20,17 @@ from sqlalchemy.orm.session import sessionmaker as SessionMaker
 from maildrop.config import Settings, get_settings
 from maildrop.db import create_engine_from_url, create_schema, get_db, make_session_factory
 from maildrop.mailparse import parse_message
-from maildrop.models import Alias, Message, UnassignedMessage, utcnow
+from maildrop.manager import (
+    VALID_MANAGER_STATUSES,
+    bulk_update_status,
+    delete_managed_inbox,
+    import_managed_inboxes,
+    list_managed_inboxes,
+    manager_stats,
+    update_refresh_error,
+    update_refresh_success,
+)
+from maildrop.models import Alias, ManagedInbox, Message, UnassignedMessage, utcnow
 from maildrop.repository import (
     find_alias_by_prefix,
     generate_aliases,
@@ -223,6 +234,44 @@ def create_app(
             "has_next": page < total_pages,
         }
 
+    def manager_status_label(status: str) -> str:
+        return {"pending": "待消耗", "used": "已消耗", "error": "错误"}.get(status, status)
+
+    def manager_context(
+        db: Session,
+        *,
+        q: str,
+        status: str,
+        page: int,
+        page_size: int,
+        import_summary: dict[str, int] | None = None,
+        notice: str = "",
+    ) -> dict:
+        items, total = list_managed_inboxes(
+            db,
+            q=q,
+            status=status,
+            page=page,
+            page_size=page_size,
+        )
+        return {
+            "title": "收件管理器",
+            "items": items,
+            "q": q,
+            "status": status,
+            "status_options": [
+                ("all", "全部"),
+                ("pending", "待消耗"),
+                ("used", "已消耗"),
+                ("error", "错误"),
+            ],
+            "status_label": manager_status_label,
+            "stats": manager_stats(db),
+            "pagination": pagination(page, page_size, total),
+            "import_summary": import_summary,
+            "notice": notice,
+        }
+
     def alias_filter(q: str):
         clean_q = q.strip()
         if not clean_q:
@@ -375,6 +424,140 @@ def create_app(
             request,
             "aliases.html",
             paged_alias_context(db, q, category, page, page_size),
+        )
+
+    @app.get("/xxxmailmanage", response_class=HTMLResponse)
+    def xxxmailmanage(
+        request: Request,
+        q: str = Query("", max_length=256),
+        status: str = Query("all", pattern="^(all|pending|used|error)$"),
+        page: int = Query(1, ge=1),
+        page_size: int = Query(50, ge=1, le=200),
+        _: str = Depends(require_admin),
+        db: Session = Depends(db_dep),
+    ) -> HTMLResponse:
+        return render_admin(
+            request,
+            "xxxmailmanage.html",
+            manager_context(db, q=q, status=status, page=page, page_size=page_size),
+        )
+
+    @app.post("/xxxmailmanage/import", response_class=HTMLResponse)
+    def xxxmailmanage_import(
+        request: Request,
+        rows: str = Form(""),
+        csrf_token: str = Form(""),
+        _: str = Depends(require_admin),
+        db: Session = Depends(db_dep),
+    ) -> HTMLResponse:
+        require_csrf(request, csrf_token)
+        summary = import_managed_inboxes(db, rows)
+        return render_admin(
+            request,
+            "xxxmailmanage.html",
+            manager_context(
+                db,
+                q="",
+                status="all",
+                page=1,
+                page_size=50,
+                import_summary=summary,
+            ),
+        )
+
+    @app.post("/xxxmailmanage/status", response_class=HTMLResponse)
+    def xxxmailmanage_bulk_status(
+        request: Request,
+        csrf_token: str = Form(""),
+        ids: list[int] | None = Form(None),
+        status: str = Form(...),
+        _: str = Depends(require_admin),
+        db: Session = Depends(db_dep),
+    ) -> HTMLResponse:
+        require_csrf(request, csrf_token)
+        try:
+            updated = bulk_update_status(db, ids or [], status)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return render_admin(
+            request,
+            "xxxmailmanage.html",
+            manager_context(
+                db,
+                q="",
+                status="all",
+                page=1,
+                page_size=50,
+                notice=f"已更新 {updated} 条记录",
+            ),
+        )
+
+    @app.post("/xxxmailmanage/{item_id}/status", response_class=HTMLResponse)
+    def xxxmailmanage_item_status(
+        request: Request,
+        item_id: int,
+        csrf_token: str = Form(""),
+        status: str = Form(...),
+        _: str = Depends(require_admin),
+        db: Session = Depends(db_dep),
+    ) -> HTMLResponse:
+        require_csrf(request, csrf_token)
+        if status not in VALID_MANAGER_STATUSES:
+            raise HTTPException(status_code=400, detail="invalid manager status")
+        item = db.get(ManagedInbox, item_id)
+        if item is None:
+            raise HTTPException(status_code=404, detail="managed inbox not found")
+        item.status = status
+        item.updated_at = utcnow()
+        db.commit()
+        return render_admin(
+            request,
+            "xxxmailmanage.html",
+            manager_context(db, q="", status="all", page=1, page_size=50),
+        )
+
+    @app.post("/xxxmailmanage/{item_id}/refresh", response_class=HTMLResponse)
+    def xxxmailmanage_refresh(
+        request: Request,
+        item_id: int,
+        csrf_token: str = Form(""),
+        _: str = Depends(require_admin),
+        db: Session = Depends(db_dep),
+    ) -> HTMLResponse:
+        require_csrf(request, csrf_token)
+        item = db.get(ManagedInbox, item_id)
+        if item is None:
+            raise HTTPException(status_code=404, detail="managed inbox not found")
+        try:
+            with httpx.Client(timeout=10) as client:
+                response = client.get(item.api_url)
+            if response.status_code != 200:
+                update_refresh_error(item, f"HTTP {response.status_code}")
+            else:
+                update_refresh_success(item, response.text)
+        except Exception as exc:
+            update_refresh_error(item, str(exc))
+        db.commit()
+        return render_admin(
+            request,
+            "xxxmailmanage.html",
+            manager_context(db, q="", status="all", page=1, page_size=50),
+        )
+
+    @app.post("/xxxmailmanage/{item_id}/delete", response_class=HTMLResponse)
+    def xxxmailmanage_delete(
+        request: Request,
+        item_id: int,
+        csrf_token: str = Form(""),
+        _: str = Depends(require_admin),
+        db: Session = Depends(db_dep),
+    ) -> HTMLResponse:
+        require_csrf(request, csrf_token)
+        delete_managed_inbox(db, item_id)
+        return render_admin(
+            request,
+            "xxxmailmanage.html",
+            manager_context(db, q="", status="all", page=1, page_size=50),
         )
 
     @app.post("/admin/aliases/bulk", response_class=HTMLResponse)

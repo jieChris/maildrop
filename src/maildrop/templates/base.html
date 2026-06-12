@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{ title }} - Maildrop</title>
   <link rel="stylesheet" href="/static/admin.css">
+  {% block head_extra %}{% endblock %}
 </head>
 <body>
   <header class="topbar">
@@ -15,6 +16,7 @@
     <nav>
       <a href="/admin">邮箱别名</a>
       <a href="/admin/unassigned">未登记邮件</a>
+      <a href="/xxxmailmanage">收件管理器</a>
     </nav>
   </header>
   <main>

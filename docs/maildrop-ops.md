@@ -67,6 +67,23 @@ alias for review. Public API links for deleted aliases return `403`; future
 mail to the same prefix lands in `unassigned_messages` with reason
 `alias_deleted`. Deleted aliases are excluded from `导出全部并轮换 token`.
 
+## Xxxmailmanage Inbox Manager
+
+`/xxxmailmanage` is a protected inbox manager that uses the same Basic Auth and
+CSRF protection as `/admin`. It stores imported mailbox API links in PostgreSQL
+instead of browser localStorage.
+
+Accepted import formats:
+
+```text
+user001@aiprot.space https://aiprot.space/api/inbox/user001/latest.txt?token=...
+user002@aiprot.space----https://aiprot.space/api/inbox/user002/latest.txt?token=...
+```
+
+Rows can be marked `待消耗`, `已消耗`, or `错误`. The `查看最新` action fetches
+the stored API URL server-side, saves a bounded plaintext preview on success,
+and marks the row `错误` on fetch failure.
+
 Do not enable access logging that records full request URIs for Maildrop public
 API paths. The production app starts Uvicorn with `--no-access-log`; Caddy should
 remain without a site access-log directive unless query strings are explicitly
@@ -208,7 +225,16 @@ This sends a unique message to `public-smoke-...@aiprot.space` through
 `mail.aiprot.space:25`, then queries PostgreSQL on the server to confirm the
 message landed in `unassigned_messages`. If local outbound SMTP 25 is blocked,
 the script sends the same smoke message from the server side and still verifies
-the database result.
+the database result. Latest smoke recipient after the `/xxxmailmanage` deploy:
+`public-smoke-1781265874-77509bc7@aiprot.space`.
+
+For `/xxxmailmanage`, a production HTTPS smoke can import one temporary row,
+mark it `已消耗`, and confirm `managed_inboxes.status = 'used'`. Latest smoke
+record:
+
+```text
+managesmoke1781265819@aiprot.space status=used
+```
 
 ## Back Up PostgreSQL
 

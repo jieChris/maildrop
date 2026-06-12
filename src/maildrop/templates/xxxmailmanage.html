@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+{% block head_extra %}
+<link rel="stylesheet" href="/static/xxxmailmanage.css">
+{% endblock %}
+{% block content %}
+<div class="manager-shell">
+  <section class="manager-card">
+    <header class="manager-header">
+      <div>
+        <h2>收件管理器</h2>
+        <p>导入邮箱和 API 链接，按消耗状态管理收件入口</p>
+      </div>
+      <div class="manager-stats">
+        <span>全部 <b>{{ stats.total }}</b></span>
+        <span>待消耗 <b>{{ stats.pending }}</b></span>
+        <span>已消耗 <b>{{ stats.used }}</b></span>
+        <span>错误 <b>{{ stats.error }}</b></span>
+      </div>
+    </header>
+
+    <section class="manager-panel">
+      {% if import_summary %}
+      <div class="manager-notice">导入完成：新增 {{ import_summary.created }}，更新 {{ import_summary.updated }}，无效 {{ import_summary.invalid }}</div>
+      {% endif %}
+      {% if notice %}
+      <div class="manager-notice">{{ notice }}</div>
+      {% endif %}
+      <form method="post" action="/xxxmailmanage/import">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <textarea name="rows" class="manager-input" placeholder="每行一条，格式：邮箱 API链接&#10;也支持：邮箱----API链接"></textarea>
+        <div class="manager-controls">
+          <button class="btn-primary" type="submit">批量导入</button>
+          <span class="hint">重复邮箱会更新 API 链接，并保留原状态和备注。</span>
+        </div>
+      </form>
+    </section>
+
+    <section class="manager-panel">
+      <form method="get" action="/xxxmailmanage" class="manager-toolbar">
+        <input type="text" name="q" value="{{ q }}" placeholder="搜索邮箱或链接">
+        <select name="status">
+          {% for value, label in status_options %}
+          <option value="{{ value }}" {{ "selected" if status == value else "" }}>{{ label }}</option>
+          {% endfor %}
+        </select>
+        <input type="number" name="page_size" min="1" max="200" value="{{ pagination.page_size }}" aria-label="每页数量">
+        <button type="submit">筛选</button>
+      </form>
+
+      <form method="post" action="/xxxmailmanage/status" id="manager-bulk-form" class="manager-toolbar">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button type="submit" name="status" value="pending">标记待消耗</button>
+        <button type="submit" name="status" value="used">标记已消耗</button>
+        <button type="submit" name="status" value="error">标记错误</button>
+      </form>
+
+      <div class="manager-results">
+        {% for item in items %}
+        <article class="manager-row status-{{ item.status }}">
+          <div class="manager-row-head">
+            <input form="manager-bulk-form" type="checkbox" name="ids" value="{{ item.id }}" aria-label="选择 {{ item.email }}">
+            <strong class="manager-email">{{ item.email }}</strong>
+            <span class="manager-status">{{ status_label(item.status) }}</span>
+            <code class="manager-url">{{ item.api_url }}</code>
+            <div class="manager-actions">
+              <form method="post" action="/xxxmailmanage/{{ item.id }}/refresh">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <button type="submit">查看最新</button>
+              </form>
+              <form method="post" action="/xxxmailmanage/{{ item.id }}/status">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <select name="status">
+                  <option value="pending" {{ "selected" if item.status == "pending" else "" }}>待消耗</option>
+                  <option value="used" {{ "selected" if item.status == "used" else "" }}>已消耗</option>
+                  <option value="error" {{ "selected" if item.status == "error" else "" }}>错误</option>
+                </select>
+                <button type="submit">保存</button>
+              </form>
+              <button type="button" data-copy="{{ item.email }}">复制邮箱</button>
+              <button type="button" data-copy="{{ item.api_url }}">复制链接</button>
+              <form method="post" action="/xxxmailmanage/{{ item.id }}/delete">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <button type="submit">删除</button>
+              </form>
+            </div>
+          </div>
+          <div class="manager-detail">
+            {% if item.last_preview %}
+            <div class="detail-label">最新内容</div>
+            <pre>{{ item.last_preview }}</pre>
+            {% endif %}
+            {% if item.last_error %}
+            <div class="detail-label">错误</div>
+            <pre class="error-content">{{ item.last_error }}</pre>
+            {% endif %}
+            <div class="detail-label">最后检查</div>
+            <span>{{ item.last_checked_at or "-" }}</span>
+          </div>
+        </article>
+        {% else %}
+        <div class="manager-empty">暂无记录，先批量导入邮箱和 API 链接</div>
+        {% endfor %}
+      </div>
+    </section>
+
+    <nav class="pager">
+      {% if pagination.has_prev %}
+      <a href="/xxxmailmanage?status={{ status }}&q={{ q|urlencode }}&page={{ pagination.page - 1 }}&page_size={{ pagination.page_size }}">上一页</a>
+      {% endif %}
+      {% if pagination.has_next %}
+      <a href="/xxxmailmanage?status={{ status }}&q={{ q|urlencode }}&page={{ pagination.page + 1 }}&page_size={{ pagination.page_size }}">下一页</a>
+      {% endif %}
+    </nav>
+  </section>
+</div>
+
+<script>
+document.querySelectorAll("[data-copy]").forEach((button) => {
+  button.addEventListener("click", async () => {
+    await navigator.clipboard.writeText(button.getAttribute("data-copy"));
+    button.textContent = "已复制";
+    setTimeout(() => { button.textContent = button.getAttribute("data-copy").includes("@") ? "复制邮箱" : "复制链接"; }, 900);
+  });
+});
+</script>
+{% endblock %}

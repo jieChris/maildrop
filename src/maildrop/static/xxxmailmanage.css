@@ -1,0 +1,218 @@
+.manager-shell {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-radius: 14px;
+  margin: -6px auto 0;
+  max-width: 1240px;
+  padding: 18px;
+}
+
+.manager-card {
+  background: #fff;
+  border-radius: 14px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.16);
+  overflow: hidden;
+}
+
+.manager-header {
+  align-items: flex-start;
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  color: #fff;
+  display: flex;
+  gap: 18px;
+  justify-content: space-between;
+  padding: 24px 28px;
+}
+
+.manager-header h2 {
+  font-size: 20px;
+  margin: 0;
+}
+
+.manager-header p {
+  color: rgba(255, 255, 255, 0.88);
+  margin: 4px 0 0;
+}
+
+.manager-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.manager-stats span {
+  background: rgba(255, 255, 255, 0.16);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 999px;
+  padding: 5px 10px;
+}
+
+.manager-panel {
+  padding: 18px 28px;
+}
+
+.manager-panel + .manager-panel {
+  padding-top: 0;
+}
+
+.manager-input {
+  border: 2px solid #e1e4e8;
+  border-radius: 10px;
+  min-height: 130px;
+  padding: 12px;
+  width: 100%;
+}
+
+.manager-input:focus {
+  border-color: #667eea;
+  outline: none;
+}
+
+.manager-controls,
+.manager-toolbar,
+.manager-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.manager-controls {
+  margin-top: 10px;
+}
+
+.manager-toolbar {
+  background: #f8f9fa;
+  border-radius: 10px;
+  margin-bottom: 10px;
+  padding: 10px 12px;
+}
+
+.manager-toolbar input[type="text"] {
+  flex: 1;
+  min-width: 220px;
+}
+
+.manager-toolbar select,
+.manager-toolbar input,
+.manager-actions select {
+  border: 1px solid #dee2e6;
+  border-radius: 6px;
+  height: 32px;
+  padding: 4px 8px;
+}
+
+.btn-primary,
+.manager-card button {
+  border-radius: 7px;
+  height: 32px;
+}
+
+.btn-primary {
+  background: linear-gradient(135deg, #667eea, #764ba2);
+}
+
+.manager-notice {
+  background: #eef2ff;
+  border: 1px solid #dbe4ff;
+  border-radius: 8px;
+  color: #3730a3;
+  margin-bottom: 10px;
+  padding: 9px 12px;
+}
+
+.manager-results {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.manager-row {
+  border: 1px solid #e1e4e8;
+  border-left: 3px solid #ffc107;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.manager-row.status-used {
+  border-left-color: #28a745;
+}
+
+.manager-row.status-error {
+  border-left-color: #dc3545;
+}
+
+.manager-row-head {
+  align-items: center;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: 24px minmax(180px, 1fr) 78px minmax(220px, 1.4fr) auto;
+  padding: 10px 12px;
+}
+
+.manager-email,
+.manager-url {
+  overflow-wrap: anywhere;
+}
+
+.manager-status {
+  border-radius: 999px;
+  font-size: 12px;
+  justify-self: start;
+  padding: 3px 8px;
+}
+
+.status-pending .manager-status {
+  background: #fff3cd;
+  color: #856404;
+}
+
+.status-used .manager-status {
+  background: #d4edda;
+  color: #155724;
+}
+
+.status-error .manager-status {
+  background: #f8d7da;
+  color: #721c24;
+}
+
+.manager-actions form {
+  display: inline-flex;
+  gap: 5px;
+}
+
+.manager-detail {
+  border-top: 1px solid #f1f3f5;
+  color: #495057;
+  padding: 10px 14px 14px;
+}
+
+.manager-detail pre {
+  background: #f8f9fa;
+  border: 1px solid #e9ecef;
+  border-radius: 6px;
+  max-height: 220px;
+  overflow: auto;
+  padding: 10px;
+  white-space: pre-wrap;
+}
+
+.manager-detail .error-content {
+  color: #dc3545;
+}
+
+.manager-empty {
+  color: #9aa3af;
+  padding: 36px 12px;
+  text-align: center;
+}
+
+@media (max-width: 900px) {
+  .manager-header,
+  .manager-row-head {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
