@@ -66,6 +66,45 @@ def test_public_smoke_sends_message_and_waits_for_database_confirmation(monkeypa
     assert "Public SMTP smoke body" in sent["body"]
 
 
+def test_public_smoke_falls_back_to_server_side_smtp_when_local_send_times_out(monkeypatch):
+    module = load_module()
+    sent = {}
+
+    monkeypatch.setattr(module, "run_production_check", lambda _target: 0)
+    monkeypatch.setattr(module.secrets, "token_hex", lambda _size: "abcd1234")
+    monkeypatch.setattr(module.time, "time", lambda: 1781208000)
+
+    def fake_public_send(_domain, _recipient, _subject, _body):
+        raise TimeoutError("local outbound smtp blocked")
+
+    def fake_server_send(server_host, domain, recipient, subject, body):
+        sent["server_host"] = server_host
+        sent["domain"] = domain
+        sent["recipient"] = recipient
+        sent["subject"] = subject
+        sent["body"] = body
+
+    monkeypatch.setattr(module, "send_public_smtp", fake_public_send)
+    monkeypatch.setattr(module, "send_server_smtp", fake_server_send)
+    monkeypatch.setattr(
+        module,
+        "latest_unassigned_subject",
+        lambda _server_host, _recipient: sent["subject"],
+    )
+    monkeypatch.setattr(module.time, "sleep", lambda _seconds: None)
+
+    result = module.run_smoke(
+        module.SmokeTarget("aiprot.space", "emailengine", "167.71.29.22"),
+        timeout_seconds=1,
+        poll_seconds=1,
+    )
+
+    assert result == 0
+    assert sent["server_host"] == "emailengine"
+    assert sent["domain"] == "aiprot.space"
+    assert sent["recipient"] == "public-smoke-1781208000-abcd1234@aiprot.space"
+
+
 def test_latest_unassigned_subject_queries_server_with_safe_recipient(monkeypatch):
     module = load_module()
     calls = []

@@ -113,6 +113,25 @@ h3 {
   padding: 14px;
 }
 
+.tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.tabs a {
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  color: var(--text);
+  padding: 6px 10px;
+}
+
+.tabs a.active {
+  background: var(--brand);
+  border-color: var(--brand);
+  color: #fff;
+}
+
 label {
   align-items: center;
   display: inline-flex;

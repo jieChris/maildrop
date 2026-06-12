@@ -46,6 +46,48 @@ def send_public_smtp(domain: str, recipient: str, subject: str, body: str) -> No
         smtp.send_message(message)
 
 
+def send_server_smtp(
+    server_host: str,
+    domain: str,
+    recipient: str,
+    subject: str,
+    body: str,
+) -> None:
+    remote_command = " ".join(
+        [
+            "python3",
+            "-",
+            shlex.quote(domain),
+            shlex.quote(recipient),
+            shlex.quote(subject),
+            shlex.quote(body),
+        ]
+    )
+    script = """\
+import smtplib
+import sys
+from email.message import EmailMessage
+
+domain, recipient, subject, body = sys.argv[1:5]
+message = EmailMessage()
+message["Subject"] = subject
+message["From"] = "sender@example.net"
+message["To"] = recipient
+message.set_content(body)
+with smtplib.SMTP(f"mail.{domain}", 25, timeout=15) as smtp:
+    smtp.send_message(message)
+"""
+    result = subprocess.run(
+        ["ssh", server_host, remote_command],
+        input=script,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(result.stderr.strip() or "server-side smtp send failed")
+
+
 def latest_unassigned_subject(server_host: str, recipient: str) -> str:
     sql = (
         "select subject from unassigned_messages "
@@ -95,7 +137,12 @@ def run_smoke(target: SmokeTarget, *, timeout_seconds: int, poll_seconds: int) -
     subject = f"Public Smoke {suffix}"
     body = f"Public SMTP smoke body {suffix}"
 
-    send_public_smtp(target.domain, recipient, subject, body)
+    try:
+        send_public_smtp(target.domain, recipient, subject, body)
+    except (OSError, smtplib.SMTPException, TimeoutError) as exc:
+        print(f"WARN local public SMTP send failed, using server fallback: {exc}")
+        send_server_smtp(target.server_host, target.domain, recipient, subject, body)
+
     if wait_for_unassigned(
         target.server_host,
         recipient,

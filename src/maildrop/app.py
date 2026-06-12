@@ -19,7 +19,7 @@ from sqlalchemy.orm.session import sessionmaker as SessionMaker
 from maildrop.config import Settings, get_settings
 from maildrop.db import create_engine_from_url, create_schema, get_db, make_session_factory
 from maildrop.mailparse import parse_message
-from maildrop.models import Alias, Message, UnassignedMessage
+from maildrop.models import Alias, Message, UnassignedMessage, utcnow
 from maildrop.repository import (
     find_alias_by_prefix,
     generate_aliases,
@@ -176,8 +176,15 @@ def create_app(
         return f"{base_url}/api/inbox/{alias.prefix}/latest.txt?token={api_token}"
 
     def alias_view(alias: Alias, token: str | None = None) -> dict[str, object]:
+        if alias.deleted_at is not None:
+            category = "已删除"
+        elif alias.exported_at is not None:
+            category = "已导出"
+        else:
+            category = "未导出"
         return {
             "alias": alias,
+            "category": category,
             "latest_txt_url": latest_txt_url(alias, token),
         }
 
@@ -200,6 +207,11 @@ def create_app(
             },
         )
 
+    def soft_delete_alias(alias: Alias) -> None:
+        if alias.deleted_at is None:
+            alias.deleted_at = utcnow()
+        alias.enabled = False
+
     def pagination(page: int, page_size: int, total: int) -> dict[str, int | bool]:
         total_pages = max(1, (total + page_size - 1) // page_size)
         return {
@@ -218,9 +230,19 @@ def create_app(
         pattern = f"%{clean_q}%"
         return or_(Alias.prefix.ilike(pattern), Alias.email.ilike(pattern))
 
+    def alias_category_filter(category: str):
+        if category == "unexported":
+            return Alias.deleted_at.is_(None), Alias.exported_at.is_(None)
+        if category == "exported":
+            return Alias.deleted_at.is_(None), Alias.exported_at.is_not(None)
+        if category == "deleted":
+            return (Alias.deleted_at.is_not(None),)
+        return ()
+
     def paged_alias_context(
         db: Session,
         q: str,
+        category: str,
         page: int,
         page_size: int,
         generated: list[dict[str, str]] | None = None,
@@ -231,6 +253,10 @@ def create_app(
         if where_clause is not None:
             total_stmt = total_stmt.where(where_clause)
             list_stmt = list_stmt.where(where_clause)
+        category_clauses = alias_category_filter(category)
+        if category_clauses:
+            total_stmt = total_stmt.where(*category_clauses)
+            list_stmt = list_stmt.where(*category_clauses)
         total = db.execute(total_stmt).scalar_one()
         aliases = (
             db.execute(list_stmt.offset((page - 1) * page_size).limit(page_size))
@@ -242,6 +268,7 @@ def create_app(
             "aliases": [alias_view(alias) for alias in aliases],
             "generated": generated or [],
             "q": q,
+            "category": category,
             "pagination": pagination(page, page_size, total),
         }
 
@@ -338,6 +365,7 @@ def create_app(
     def admin_aliases(
         request: Request,
         q: str = Query("", max_length=128),
+        category: str = Query("all", pattern="^(all|unexported|exported|deleted)$"),
         page: int = Query(1, ge=1),
         page_size: int = Query(50, ge=1, le=200),
         _: str = Depends(require_admin),
@@ -346,7 +374,7 @@ def create_app(
         return render_admin(
             request,
             "aliases.html",
-            paged_alias_context(db, q, page, page_size),
+            paged_alias_context(db, q, category, page, page_size),
         )
 
     @app.post("/admin/aliases/bulk", response_class=HTMLResponse)
@@ -379,7 +407,7 @@ def create_app(
         return render_admin(
             request,
             "aliases.html",
-            paged_alias_context(db, "", 1, 50, generated=generated),
+            paged_alias_context(db, "", "all", 1, 50, generated=generated),
         )
 
     @app.post("/admin/aliases/{prefix}/token", response_class=HTMLResponse)
@@ -402,7 +430,7 @@ def create_app(
         return render_admin(
             request,
             "aliases.html",
-            paged_alias_context(db, "", 1, 50, generated=generated),
+            paged_alias_context(db, "", "all", 1, 50, generated=generated),
         )
 
     @app.post("/admin/aliases/export", response_class=PlainTextResponse)
@@ -417,7 +445,11 @@ def create_app(
         require_csrf(request, csrf_token)
         if scope == "all":
             aliases = list(
-                db.execute(select(Alias).order_by(Alias.email.asc(), Alias.id.asc()))
+                db.execute(
+                    select(Alias)
+                    .where(Alias.deleted_at.is_(None), Alias.enabled.is_(True))
+                    .order_by(Alias.email.asc(), Alias.id.asc())
+                )
                 .scalars()
                 .all()
             )
@@ -428,7 +460,11 @@ def create_app(
             aliases = list(
                 db.execute(
                     select(Alias)
-                    .where(Alias.prefix.in_(clean_prefixes))
+                    .where(
+                        Alias.prefix.in_(clean_prefixes),
+                        Alias.deleted_at.is_(None),
+                        Alias.enabled.is_(True),
+                    )
                     .order_by(Alias.email.asc(), Alias.id.asc())
                 )
                 .scalars()
@@ -438,9 +474,62 @@ def create_app(
         if not aliases:
             raise HTTPException(status_code=400, detail="no aliases to export")
 
+        exported_at = utcnow()
+        for alias in aliases:
+            alias.exported_at = exported_at
         exported = [rotate_alias_token_view(alias) for alias in aliases]
         db.commit()
         return exported_alias_links(exported)
+
+    @app.post("/admin/aliases/delete", response_class=HTMLResponse)
+    def admin_delete_selected_aliases(
+        request: Request,
+        csrf_token: str = Form(""),
+        prefixes: list[str] | None = Form(None),
+        _: str = Depends(require_admin),
+        db: Session = Depends(db_dep),
+    ) -> HTMLResponse:
+        require_csrf(request, csrf_token)
+        clean_prefixes = sorted({prefix.strip().lower() for prefix in prefixes or [] if prefix.strip()})
+        if not clean_prefixes:
+            raise HTTPException(status_code=400, detail="select aliases to delete")
+
+        aliases = list(
+            db.execute(select(Alias).where(Alias.prefix.in_(clean_prefixes)))
+            .scalars()
+            .all()
+        )
+        for alias in aliases:
+            soft_delete_alias(alias)
+        db.commit()
+
+        return render_admin(
+            request,
+            "aliases.html",
+            paged_alias_context(db, "", "deleted", 1, 50),
+        )
+
+    @app.post("/admin/aliases/{prefix}/delete", response_class=HTMLResponse)
+    def admin_delete_alias(
+        request: Request,
+        prefix: str,
+        csrf_token: str = Form(""),
+        _: str = Depends(require_admin),
+        db: Session = Depends(db_dep),
+    ) -> HTMLResponse:
+        require_csrf(request, csrf_token)
+        alias = find_alias_by_prefix(db, prefix)
+        if alias is None:
+            raise HTTPException(status_code=404, detail="alias not found")
+
+        soft_delete_alias(alias)
+        db.commit()
+
+        return render_admin(
+            request,
+            "aliases.html",
+            paged_alias_context(db, "", "deleted", 1, 50),
+        )
 
     @app.get("/admin/unassigned", response_class=HTMLResponse)
     def admin_unassigned(

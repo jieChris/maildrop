@@ -126,6 +126,25 @@ def test_ingest_disabled_alias_goes_to_unassigned(db_session):
     assert latest_message_for_alias(db_session, alias) is None
 
 
+def test_ingest_deleted_alias_goes_to_unassigned(db_session):
+    alias, _ = create_alias(db_session, "alpha", "aiprot.space")
+    alias.enabled = False
+    alias.deleted_at = datetime.now(timezone.utc)
+    db_session.commit()
+
+    result = ingest_parsed_message(
+        db_session,
+        parsed("alpha@aiprot.space"),
+        expected_domain="aiprot.space",
+    )
+
+    stored = db_session.query(UnassignedMessage).one()
+    assert result == "unassigned"
+    assert stored.recipient == "alpha@aiprot.space"
+    assert stored.reason == "alias_deleted"
+    assert latest_message_for_alias(db_session, alias) is None
+
+
 def test_generate_aliases_creates_requested_count_with_single_commit(db_session):
     commits = 0
 

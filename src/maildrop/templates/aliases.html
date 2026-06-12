@@ -6,10 +6,20 @@
     <p>共 {{ pagination.total }} 个结果，第 {{ pagination.page }} / {{ pagination.total_pages }} 页</p>
   </div>
   <form method="get" action="/admin" class="search-form">
+    <input type="hidden" name="category" value="{{ category }}">
     <input type="search" name="q" value="{{ q }}" placeholder="搜索前缀或邮箱">
     <input type="number" name="page_size" min="1" max="200" value="{{ pagination.page_size }}" aria-label="每页数量">
     <button type="submit">筛选</button>
   </form>
+</section>
+
+<section class="panel">
+  <nav class="tabs" aria-label="邮箱分类">
+    <a href="/admin?category=all&q={{ q|urlencode }}&page_size={{ pagination.page_size }}" class="{{ 'active' if category == 'all' else '' }}">全部</a>
+    <a href="/admin?category=unexported&q={{ q|urlencode }}&page_size={{ pagination.page_size }}" class="{{ 'active' if category == 'unexported' else '' }}">未导出</a>
+    <a href="/admin?category=exported&q={{ q|urlencode }}&page_size={{ pagination.page_size }}" class="{{ 'active' if category == 'exported' else '' }}">已导出</a>
+    <a href="/admin?category=deleted&q={{ q|urlencode }}&page_size={{ pagination.page_size }}" class="{{ 'active' if category == 'deleted' else '' }}">已删除</a>
+  </nav>
 </section>
 
 <section class="panel">
@@ -22,10 +32,11 @@
 </section>
 
 <section class="panel">
-  <form method="post" action="/admin/aliases/export" id="alias-export-form" class="toolbar">
+  <form method="post" action="/admin/aliases/export" id="alias-bulk-form" class="toolbar">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <button type="submit">导出选中并轮换 token</button>
     <button type="submit" name="scope" value="all">导出全部并轮换 token</button>
+    <button type="submit" formaction="/admin/aliases/delete">删除选中</button>
     <span class="hint">导出会生成新 API 链接，旧链接立即失效。</span>
   </form>
 </section>
@@ -47,6 +58,7 @@
           <input type="checkbox" aria-label="选择当前页" onclick="document.querySelectorAll('.alias-select').forEach((item) => { item.checked = this.checked; })">
         </th>
         <th>邮箱</th>
+        <th>分类</th>
         <th>状态</th>
         <th>邮件数</th>
         <th>最后收信</th>
@@ -58,22 +70,31 @@
     <tbody>
       {% for item in aliases %}
       <tr>
-        <td><input class="alias-select" form="alias-export-form" type="checkbox" name="prefixes" value="{{ item.alias.prefix }}" aria-label="选择 {{ item.alias.email }}"></td>
+        <td><input class="alias-select" form="alias-bulk-form" type="checkbox" name="prefixes" value="{{ item.alias.prefix }}" aria-label="选择 {{ item.alias.email }}"></td>
         <td><strong>{{ item.alias.email }}</strong></td>
+        <td>{{ item.category }}</td>
         <td>{{ "启用" if item.alias.enabled else "禁用" }}</td>
         <td>{{ item.alias.message_count }}</td>
         <td>{{ item.alias.last_message_at or "-" }}</td>
         <td><code>{{ item.latest_txt_url }}</code></td>
         <td><a href="/admin/aliases/{{ item.alias.prefix }}/messages">查看</a></td>
         <td>
+          {% if item.alias.deleted_at %}
+          <span class="hint">已删除</span>
+          {% else %}
           <form method="post" action="/admin/aliases/{{ item.alias.prefix }}/token" class="inline-form">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <button type="submit">轮换 token</button>
           </form>
+          <form method="post" action="/admin/aliases/{{ item.alias.prefix }}/delete" class="inline-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button type="submit">删除</button>
+          </form>
+          {% endif %}
         </td>
       </tr>
       {% else %}
-      <tr><td colspan="8" class="empty">没有匹配的邮箱别名</td></tr>
+      <tr><td colspan="9" class="empty">没有匹配的邮箱别名</td></tr>
       {% endfor %}
     </tbody>
   </table>
@@ -81,10 +102,10 @@
 
 <nav class="pager">
   {% if pagination.has_prev %}
-  <a href="/admin?q={{ q|urlencode }}&page={{ pagination.page - 1 }}&page_size={{ pagination.page_size }}">上一页</a>
+  <a href="/admin?category={{ category }}&q={{ q|urlencode }}&page={{ pagination.page - 1 }}&page_size={{ pagination.page_size }}">上一页</a>
   {% endif %}
   {% if pagination.has_next %}
-  <a href="/admin?q={{ q|urlencode }}&page={{ pagination.page + 1 }}&page_size={{ pagination.page_size }}">下一页</a>
+  <a href="/admin?category={{ category }}&q={{ q|urlencode }}&page={{ pagination.page + 1 }}&page_size={{ pagination.page_size }}">下一页</a>
   {% endif %}
 </nav>
 {% endblock %}

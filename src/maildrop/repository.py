@@ -118,6 +118,11 @@ def ingest_parsed_message(
         db.commit()
         return "unassigned"
 
+    if alias.deleted_at is not None:
+        _store_unassigned(db, parsed, recipient, "alias_deleted")
+        db.commit()
+        return "unassigned"
+
     if not alias.enabled:
         _store_unassigned(db, parsed, recipient, "alias_disabled")
         db.commit()

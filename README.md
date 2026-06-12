@@ -12,6 +12,7 @@
 - 后台：中文 Jinja2 管理页面，Basic Auth。
 - API：每个邮箱前缀有独立 token 链接，可直接访问最新无格式邮件。
 - 未登记前缀：进入“未登记邮件”列表，不自动创建 alias。
+- 管理分类：后台按 `未导出`、`已导出`、`已删除` 管理邮箱别名。
 - 当前生产状态：DNS 已切到 `mail.aiprot.space`，Postfix/Caddy/Maildrop 已通过生产检查和公网真实收信 smoke。
 
 ## Maildrop 文件
@@ -88,6 +89,10 @@ user001@aiprot.space https://aiprot.space/api/inbox/user001/latest.txt?token=...
 user002@aiprot.space https://aiprot.space/api/inbox/user002/latest.txt?token=...
 ```
 
+导出成功后，相关邮箱会进入 `已导出` 分类。未导出过的邮箱保留在 `未导出` 分类。
+
+后台支持软删除邮箱。删除后邮箱进入 `已删除` 分类，API 链接立即返回 403，历史邮件保留；后续发到该前缀的邮件会进入“未登记邮件”，原因记录为 `alias_deleted`。已删除邮箱不会被“导出全部”包含。
+
 生产 Docker 启动已关闭 Uvicorn access log，避免 query token 写入应用访问日志。
 
 ## 服务器部署
@@ -96,7 +101,9 @@ user002@aiprot.space https://aiprot.space/api/inbox/user002/latest.txt?token=...
 rsync -av --exclude .git --exclude .venv --exclude .pytest_cache ./ root@167.71.29.22:/opt/maildrop/
 ssh root@167.71.29.22 'cd /opt/maildrop && cp .env.maildrop.example .env.maildrop'
 ssh root@167.71.29.22 'cd /opt/maildrop && $EDITOR .env.maildrop'
-ssh root@167.71.29.22 'cd /opt/maildrop && docker compose -f docker-compose.maildrop.yml up -d --build'
+ssh root@167.71.29.22 'cd /opt/maildrop && docker compose -f docker-compose.maildrop.yml build app'
+ssh root@167.71.29.22 'cd /opt/maildrop && docker compose -f docker-compose.maildrop.yml run --rm app alembic upgrade head'
+ssh root@167.71.29.22 'cd /opt/maildrop && docker compose -f docker-compose.maildrop.yml up -d app'
 ssh root@167.71.29.22 'cd /opt/maildrop && docker compose -f docker-compose.maildrop.yml ps'
 ```
 

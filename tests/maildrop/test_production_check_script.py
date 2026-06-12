@@ -1,6 +1,7 @@
 from pathlib import Path
 import os
 import subprocess
+import sys
 import textwrap
 
 
@@ -14,10 +15,19 @@ def _write_executable(path: Path, content: str) -> None:
     path.chmod(0o755)
 
 
-def _run_script(tmp_path: Path, *, dig_script: str, ssh_script: str) -> subprocess.CompletedProcess[str]:
+def _run_script(
+    tmp_path: Path,
+    *,
+    dig_script: str,
+    ssh_script: str,
+    skip_public_smtp: bool = True,
+    python3_script: str | None = None,
+) -> subprocess.CompletedProcess[str]:
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     _write_executable(bin_dir / "dig", dig_script)
+    if python3_script is not None:
+        _write_executable(bin_dir / "python3", python3_script)
     _write_executable(
         bin_dir / "curl",
         """\
@@ -34,8 +44,9 @@ def _run_script(tmp_path: Path, *, dig_script: str, ssh_script: str) -> subproce
     env = {
         **os.environ,
         "PATH": f"{bin_dir}:{os.environ['PATH']}",
-        "MAILDROP_SKIP_PUBLIC_SMTP_CHECK": "1",
     }
+    if skip_public_smtp:
+        env["MAILDROP_SKIP_PUBLIC_SMTP_CHECK"] = "1"
     return subprocess.run(
         [str(SCRIPT), "aiprot.space", "emailengine", "167.71.29.22"],
         cwd=ROOT,
@@ -105,10 +116,44 @@ def test_production_check_falls_back_to_tcp_dns_when_udp_times_out(tmp_path):
     assert "PASS aiprot.space MX -> 10 mail.aiprot.space." in result.stdout
 
 
+def test_production_check_falls_back_to_server_smtp_when_local_port_25_times_out(tmp_path):
+    python3_script = f"""\
+    #!/bin/sh
+    real_python={sys.executable!r}
+    if [ "$1" = "-" ]; then
+      script="$(mktemp)"
+      cat > "$script"
+      if grep -q "socket.create_connection" "$script"; then
+        exit 1
+      fi
+      exec "$real_python" "$@" < "$script"
+    fi
+    exec "$real_python" "$@"
+    """
+
+    result = _run_script(
+        tmp_path,
+        dig_script=GOOD_DIG,
+        ssh_script=GOOD_SSH,
+        skip_public_smtp=False,
+        python3_script=python3_script,
+    )
+
+    assert result.returncode == 0
+    assert "PASS public SMTP 25 connection to mail.aiprot.space from server fallback" in result.stdout
+
+
 def test_dockerfile_disables_uvicorn_access_log_to_avoid_query_token_leaks():
     dockerfile = DOCKERFILE.read_text(encoding="utf-8")
 
     assert '"--no-access-log"' in dockerfile
+
+
+def test_dockerfile_includes_alembic_migration_files():
+    dockerfile = DOCKERFILE.read_text(encoding="utf-8")
+
+    assert "COPY alembic.ini /app/" in dockerfile
+    assert "COPY migrations /app/migrations" in dockerfile
 
 
 def test_production_check_warns_when_old_mx_records_remain(tmp_path):

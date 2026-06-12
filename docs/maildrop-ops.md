@@ -27,7 +27,7 @@ scripts/maildrop-public-smoke.py aiprot.space emailengine 167.71.29.22
 
 Both commands exited `0`; the public smoke message landed in
 `unassigned_messages`. Latest post-deploy smoke recipient:
-`public-smoke-1781235784-43e1af3d@aiprot.space`.
+`public-smoke-1781258315-4d3046ac@aiprot.space`.
 
 ## DNS
 
@@ -57,7 +57,15 @@ link stops working immediately and the new link is shown once.
 To export existing aliases, open `/admin`, select aliases and click
 `导出选中并轮换 token`, or click `导出全部并轮换 token`. Export returns a
 plain-text attachment with one `email latest.txt-url` pair per line. Exporting
-rotates the affected aliases' tokens; old links stop working immediately.
+rotates the affected aliases' tokens; old links stop working immediately. An
+exported alias moves to the `已导出` category. Aliases that have never been
+exported remain in `未导出`.
+
+Aliases can be soft-deleted from `/admin`. Deletion sets `deleted_at`, disables
+the alias, and moves it to `已删除`. Historical messages stay attached to the
+alias for review. Public API links for deleted aliases return `403`; future
+mail to the same prefix lands in `unassigned_messages` with reason
+`alias_deleted`. Deleted aliases are excluded from `导出全部并轮换 token`.
 
 Do not enable access logging that records full request URIs for Maildrop public
 API paths. The production app starts Uvicorn with `--no-access-log`; Caddy should
@@ -80,6 +88,16 @@ curl -fsS http://127.0.0.1:8000/api/health
 ```
 
 Use the three random values for `POSTGRES_PASSWORD`, `ADMIN_PASSWORD`, and `INGEST_TOKEN`. Keep `DATABASE_URL` and `POSTGRES_PASSWORD` in sync. Keep `MAX_MESSAGE_BYTES` and Postfix `message_size_limit` in sync so oversized mail is rejected at SMTP time instead of being accepted and then rejected by HTTP ingest.
+
+For deploys that include schema changes, run migrations before restarting the
+long-running app container:
+
+```bash
+cd /opt/maildrop
+docker compose -f docker-compose.maildrop.yml build app
+docker compose -f docker-compose.maildrop.yml run --rm app alembic upgrade head
+docker compose -f docker-compose.maildrop.yml up -d app
+```
 
 ## Install Postfix
 
@@ -177,6 +195,8 @@ also checks Caddy, Docker health, Postfix mailapi settings, catch-all regexp,
 mailapi token readability, and public SMTP port reachability once DNS is ready.
 If UDP DNS queries to `1.1.1.1` time out locally, the script retries the same
 checks over TCP before marking DNS as not ready.
+If the machine running the check cannot open outbound SMTP 25, the final SMTP
+check falls back to an SSH server-side connection to `mail.aiprot.space:25`.
 
 After the production check exits `0`, run a real public SMTP smoke test:
 
@@ -186,7 +206,9 @@ scripts/maildrop-public-smoke.py aiprot.space emailengine 167.71.29.22
 
 This sends a unique message to `public-smoke-...@aiprot.space` through
 `mail.aiprot.space:25`, then queries PostgreSQL on the server to confirm the
-message landed in `unassigned_messages`.
+message landed in `unassigned_messages`. If local outbound SMTP 25 is blocked,
+the script sends the same smoke message from the server side and still verifies
+the database result.
 
 ## Back Up PostgreSQL
 

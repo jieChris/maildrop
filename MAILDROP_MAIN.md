@@ -13,6 +13,7 @@
 - 未登记邮箱前缀进入“未登记邮件”列表，不自动创建别名。
 - 管理后台支持批量生成随机邮箱前缀和对应 API 链接。
 - 管理后台支持选择邮箱或全量导出邮箱及对应 API 链接；由于明文 token 不落库，导出会为相关邮箱轮换 token，旧链接立即失效。
+- 管理后台支持按 `未导出`、`已导出`、`已删除` 分类管理邮箱；删除为软删除，历史邮件保留。
 - 每个邮箱有独立 tokenized API，可直接访问最新邮件无格式文本。
 - 系统需要能维护 1000+ 邮箱前缀。
 
@@ -36,6 +37,8 @@
 - Postfix pipe transport 必须设置 `mailapi_destination_recipient_limit = 1`。
 - 邮件大小上限必须单一来源并保持一致：`.env.maildrop` 的 `MAX_MESSAGE_BYTES`、应用 ingest 限制和 Postfix `message_size_limit` 需要同步；生产应尽量在 SMTP 阶段拒绝超限邮件。
 - API token：第一版保留 query token 以满足“直接点开 API 链接”，但必须降低泄漏风险：Caddy 不启用访问日志，Uvicorn 以 `--no-access-log` 启动，设置 `Referrer-Policy: no-referrer`；后台支持对已有 alias 轮换 token；后台导出 API 链接时也会轮换相关 alias 的 token。轮换后旧链接立即失效，新链接只显示/导出一次。
+- Alias 生命周期：后台分类由 `exported_at` 和 `deleted_at` 派生；导出设置 `exported_at`，删除设置 `deleted_at` 且 `enabled=false`。删除 alias 后公开 API 返回 403，历史邮件保留，后续收信进入 `unassigned_messages` 并记录 `alias_deleted`。
+- 生产 schema 变更：已引入 Alembic；涉及数据库结构的部署必须先运行 `alembic upgrade head`，再重启 app。
 - 只收不发 DNS 策略：根域 SPF 使用 `-all`，DMARC 最终使用 `p=reject`；关闭 submission/smtps/认证发信面，只保留 25 入站。
 - ASGI 启动：避免 `maildrop.app` 导入时读取环境；部署应使用 Uvicorn factory（例如 `maildrop.app:create_app --factory`）或专门的 ASGI 入口，而不是在模块底部定义全局 `app = create_app()`。
 - API：
@@ -64,12 +67,13 @@
 - Maildrop 已完成 Task 9 的本地 Caddy 配置准备：反代切换到 `127.0.0.1:8000`，公网屏蔽 `/internal/*`，移除旧的整站 Caddy Basic Auth。
 - 服务器 `emailengine` / `167.71.29.22` 已部署 Maildrop、PostgreSQL、Postfix 和 Caddy cutover；EmailEngine 容器已停止但卷保留。
 - 当前推进任务：Task 10 - Production Deployment and Smoke Test 已通过 DNS 和公网真实收信验收；统一初始提交已创建。
-- 已新增可重复运行的生产验收脚本：`scripts/maildrop-production-check.sh aiprot.space emailengine 167.71.29.22`。2026-06-12 最新运行返回 `0`，DNS、HTTPS、Docker、Postfix 和公网 SMTP 25 连接均通过；脚本已加回归测试防止 Docker `unhealthy`、旧 MX 残留、DMARC `sp=reject` 误判为通过，并在 UDP DNS 查询超时时自动回退到 TCP DNS 查询。
-- 已新增 DNS 切换后的真实公网收信验收脚本：`scripts/maildrop-public-smoke.py aiprot.space emailengine 167.71.29.22`。2026-06-12 最新运行通过，通过公网 SMTP 投递 `public-smoke-1781235784-43e1af3d@aiprot.space` 并确认进入 `unassigned_messages`。
+- 已新增可重复运行的生产验收脚本：`scripts/maildrop-production-check.sh aiprot.space emailengine 167.71.29.22`。2026-06-12 最新运行返回 `0`，DNS、HTTPS、Docker、Postfix 和公网 SMTP 25 连接均通过；脚本已加回归测试防止 Docker `unhealthy`、旧 MX 残留、DMARC `sp=reject` 误判为通过，并在 UDP DNS 查询超时或本机出站 SMTP 25 被阻断时自动回退。
+- 已新增 DNS 切换后的真实公网收信验收脚本：`scripts/maildrop-public-smoke.py aiprot.space emailengine 167.71.29.22`。2026-06-12 最新运行通过，通过 SMTP 投递 `public-smoke-1781258315-4d3046ac@aiprot.space` 并确认进入 `unassigned_messages`；本机出站 SMTP 25 被阻断时会使用服务器侧投递 fallback。
 - Spaceship 旧 MX/TXT 曾来自 `Email Forwarding Free` 预设记录组；用户已移除该预设记录并切到自建 Maildrop MX。若未来 Spaceship 再强制注入邮件转发预设，备选方案是把权威 DNS 从 Spaceship nameserver 切到 Cloudflare/其他 DNS 托管，再手动维护 Maildrop 所需记录。
 - 已新增并部署保留期/清理策略：`MESSAGE_RETENTION_DAYS=180`、`UNASSIGNED_RETENTION_DAYS=30`，CLI 为 `python -m maildrop.cli cleanup [--dry-run]`，服务器已安装 `/etc/cron.d/maildrop-cleanup` 每日 03:17 执行并使用 `flock` 防重入。
 - 已补齐 1000+ 前缀维护性回归测试：后台 alias 列表、搜索结果、未登记邮件和单 alias 邮件列表均有分页测试；已有 alias 可在后台轮换 token 并生成新的 API 链接。
 - 已新增并部署后台导出功能：可勾选邮箱导出，或一键导出全部邮箱；导出格式为 `email latest.txt-url`，导出时为相关 alias 轮换 token，旧链接立即失效。
+- 已新增并部署后台分类和软删除功能：`未导出`、`已导出`、`已删除` 分类，导出记录 `exported_at`，删除记录 `deleted_at` 并禁用 alias。
 
 ## 执行记录
 
@@ -98,6 +102,7 @@
 - 2026-06-12：创建统一初始提交 `feat: deploy maildrop receive-only service`，覆盖 Maildrop 应用、测试、部署、运维文档、生产验收脚本、EmailEngine 历史回滚文件和主状态文件。提交前已替换计划文件中残留的真实 Basic Auth 示例为 `<ADMIN_PASSWORD>` 占位符。
 - 2026-06-12：根据用户新增需求开始实现“导出已有邮箱及 API 链接”。确认当前系统不保存明文 token，因此采用“导出并轮换 token”方案。新增计划文件 `docs/superpowers/plans/2026-06-12-maildrop-export-links.md`；按 TDD 增加后台测试，覆盖导出选中 alias 只轮换选中项、导出全部 alias 轮换全部 token、未选择时返回 400。实现 `POST /admin/aliases/export`，返回 `maildrop-alias-links.txt` 文本附件，每行格式为 `email https://aiprot.space/api/inbox/{prefix}/latest.txt?token=...`；后台列表新增复选框、当前页全选、`导出选中并轮换 token`、`导出全部并轮换 token`。本地 `.venv/bin/python -m pytest tests/maildrop -q` 通过 53 个测试。
 - 2026-06-12：导出功能已部署到服务器 `/opt/maildrop` 并完成生产验收。针对本地 UDP DNS 到 `1.1.1.1` 超时导致验收误报的问题，生产检查脚本新增 DNS TCP 回退并补充回归测试；本地 `.venv/bin/python -m pytest tests/maildrop -q` 通过 54 个测试，`scripts/maildrop-production-check.sh aiprot.space emailengine 167.71.29.22` 返回 exit `0`，`scripts/maildrop-public-smoke.py aiprot.space emailengine 167.71.29.22` 返回 exit `0`，测试邮件 `public-smoke-1781239240-2764ab6b@aiprot.space` 已确认进入 `unassigned_messages`。
+- 2026-06-12：根据用户新增需求实现并部署 alias 分类和软删除。已确认删除语义为软删除、保留历史邮件、暂不做恢复按钮；新增设计规格 `docs/superpowers/specs/2026-06-12-maildrop-alias-categories-delete-design.md` 和实施计划 `docs/superpowers/plans/2026-06-12-maildrop-alias-categories-delete.md`。实现 Alembic 基础配置、`exported_at`/`deleted_at` nullable 迁移、导出状态记录、分类过滤、单个/批量软删除、删除后收信进入未登记邮件 `alias_deleted`。修复 Dockerfile 未复制 Alembic 文件导致容器内迁移失败的问题，并为生产检查/公网 smoke 增加服务器侧 SMTP fallback。本地 `.venv/bin/python -m pytest tests/maildrop -q` 通过 64 个测试；服务器已 `docker compose build app`、`alembic upgrade head`、重启 app 并 healthy；`scripts/maildrop-production-check.sh aiprot.space emailengine 167.71.29.22` 返回 exit `0`，`scripts/maildrop-public-smoke.py aiprot.space emailengine 167.71.29.22` 返回 exit `0`，测试邮件 `public-smoke-1781258315-4d3046ac@aiprot.space` 已确认进入 `unassigned_messages`；生产 HTTPS 后台软删除 smoke 创建并删除 `deletesmoke1781258395@aiprot.space`，确认 `deleted=True`、`enabled=False`。
 
 ## 下次推进检查清单
 
@@ -121,3 +126,4 @@
 - 已满足：未登记邮件/原始邮件的长期保留期和自动清理策略已实现，生产 cron 需使用 `flock` 并先 dry-run。
 - 已满足：公开 API query token 泄漏风险已降低，生产 Uvicorn access log 已关闭，后台支持 token 轮换。
 - 已满足：后台导出邮箱和 API 链接功能已部署并通过生产验收；导出会轮换相关 alias 的 token。
+- 已满足：后台 alias 分类和软删除功能已部署并通过生产验收；涉及 schema 变更的部署已通过 Alembic 管理。

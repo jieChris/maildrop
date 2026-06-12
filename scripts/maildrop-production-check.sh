@@ -185,7 +185,7 @@ fi
 
 if [ "${MAILDROP_SKIP_PUBLIC_SMTP_CHECK:-}" = "1" ]; then
   pass "public SMTP 25 connection skipped"
-elif python3 - "$DOMAIN" <<'PY'
+elif python3 - "$DOMAIN" 2>/dev/null <<'PY'
 import socket
 import sys
 
@@ -197,6 +197,18 @@ with socket.create_connection((f"mail.{domain}", 25), timeout=10) as sock:
 PY
 then
   pass "public SMTP 25 connection to mail.$DOMAIN"
+elif ssh "$SERVER_HOST" "python3 - '$DOMAIN'" <<'PY' >/dev/null 2>&1
+import socket
+import sys
+
+domain = sys.argv[1]
+with socket.create_connection((f"mail.{domain}", 25), timeout=10) as sock:
+    banner = sock.recv(256)
+    if not banner.startswith(b"220"):
+        raise SystemExit(1)
+PY
+then
+  pass "public SMTP 25 connection to mail.$DOMAIN from server fallback"
 else
   fail "public SMTP 25 connection to mail.$DOMAIN"
 fi

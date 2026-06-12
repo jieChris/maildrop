@@ -2,7 +2,7 @@ from base64 import b64encode
 from datetime import datetime, timedelta, timezone
 import re
 
-from maildrop.models import Message, UnassignedMessage
+from maildrop.models import Alias, Message, UnassignedMessage
 from maildrop.repository import create_alias
 from tests.maildrop.test_api import RAW, client_with_db
 
@@ -157,6 +157,11 @@ def test_admin_exports_selected_aliases_and_rotates_only_selected_tokens():
     assert client.get(f"/api/inbox/alpha/latest.txt?token={old_alpha_token}").status_code == 403
     assert client.get(f"/api/inbox/alpha/latest.txt?token={new_alpha_token}").status_code == 200
     assert client.get(f"/api/inbox/beta/latest.txt?token={old_beta_token}").status_code == 200
+    with session_factory() as db:
+        alpha = db.query(Alias).filter_by(prefix="alpha").one()
+        beta = db.query(Alias).filter_by(prefix="beta").one()
+        assert alpha.exported_at is not None
+        assert beta.exported_at is None
 
 
 def test_admin_exports_all_aliases_and_rotates_all_tokens():
@@ -193,6 +198,41 @@ def test_admin_exports_all_aliases_and_rotates_all_tokens():
     assert client.get(f"/api/inbox/beta/latest.txt?token={beta_token}").status_code == 200
 
 
+def test_admin_export_all_excludes_deleted_aliases():
+    client, session_factory = client_with_db()
+    with session_factory() as db:
+        _active, _active_token = create_alias(db, "active", "aiprot.space")
+        deleted, deleted_token = create_alias(db, "deleted", "aiprot.space")
+        deleted.enabled = False
+        deleted.deleted_at = datetime.now(timezone.utc)
+        db.commit()
+    for prefix in ("active", "deleted"):
+        client.post(
+            "/internal/ingest",
+            content=RAW,
+            headers={
+                "X-Envelope-Recipient": f"{prefix}@aiprot.space",
+                "X-Ingest-Token": "ingest-secret",
+            },
+        )
+    form = client.get("/admin", headers=auth_header())
+    csrf_token = csrf_token_from(form.text)
+
+    response = client.post(
+        "/admin/aliases/export",
+        data={"csrf_token": csrf_token, "scope": "all"},
+        headers=auth_header(),
+    )
+
+    assert response.status_code == 200
+    assert "active@aiprot.space" in response.text
+    assert "deleted@aiprot.space" not in response.text
+    assert client.get(f"/api/inbox/deleted/latest.txt?token={deleted_token}").status_code == 403
+    with session_factory() as db:
+        deleted = db.query(Alias).filter_by(prefix="deleted").one()
+        assert deleted.exported_at is None
+
+
 def test_admin_export_requires_selection_or_all_scope():
     client, _session_factory = client_with_db()
     form = client.get("/admin", headers=auth_header())
@@ -206,6 +246,114 @@ def test_admin_export_requires_selection_or_all_scope():
 
     assert response.status_code == 400
     assert response.json()["detail"] == "select aliases or export all"
+
+
+def test_admin_category_filters_aliases_by_export_and_delete_state():
+    client, session_factory = client_with_db()
+    now = datetime.now(timezone.utc)
+    with session_factory() as db:
+        create_alias(db, "fresh", "aiprot.space")
+        exported, _ = create_alias(db, "exported", "aiprot.space")
+        deleted, _ = create_alias(db, "deleted", "aiprot.space")
+        exported.exported_at = now
+        deleted.enabled = False
+        deleted.deleted_at = now
+        db.commit()
+
+    unexported = client.get("/admin?category=unexported", headers=auth_header())
+    exported_response = client.get("/admin?category=exported", headers=auth_header())
+    deleted_response = client.get("/admin?category=deleted", headers=auth_header())
+    all_response = client.get("/admin?category=all", headers=auth_header())
+
+    assert unexported.status_code == 200
+    assert "fresh@aiprot.space" in unexported.text
+    assert "exported@aiprot.space" not in unexported.text
+    assert "deleted@aiprot.space" not in unexported.text
+    assert "exported@aiprot.space" in exported_response.text
+    assert "fresh@aiprot.space" not in exported_response.text
+    assert "deleted@aiprot.space" in deleted_response.text
+    assert "fresh@aiprot.space" not in deleted_response.text
+    assert "fresh@aiprot.space" in all_response.text
+    assert "exported@aiprot.space" in all_response.text
+    assert "deleted@aiprot.space" in all_response.text
+
+
+def test_admin_can_soft_delete_alias_and_preserve_messages():
+    client, session_factory = client_with_db()
+    with session_factory() as db:
+        _alias, token = create_alias(db, "alpha", "aiprot.space")
+    client.post(
+        "/internal/ingest",
+        content=RAW,
+        headers={
+            "X-Envelope-Recipient": "alpha@aiprot.space",
+            "X-Ingest-Token": "ingest-secret",
+        },
+    )
+    assert client.get(f"/api/inbox/alpha/latest.txt?token={token}").status_code == 200
+    form = client.get("/admin", headers=auth_header())
+    csrf_token = csrf_token_from(form.text)
+
+    response = client.post(
+        "/admin/aliases/alpha/delete",
+        data={"csrf_token": csrf_token},
+        headers=auth_header(),
+    )
+
+    assert response.status_code == 200
+    assert "alpha@aiprot.space" in response.text
+    assert "已删除" in response.text
+    assert client.get(f"/api/inbox/alpha/latest.txt?token={token}").status_code == 403
+    with session_factory() as db:
+        alias = db.query(Alias).filter_by(prefix="alpha").one()
+        assert alias.deleted_at is not None
+        assert alias.enabled is False
+        assert db.query(Message).filter_by(alias_id=alias.id).count() == 1
+    deleted_page = client.get("/admin?category=deleted", headers=auth_header())
+    assert "alpha@aiprot.space" in deleted_page.text
+
+
+def test_admin_bulk_soft_deletes_selected_aliases():
+    client, session_factory = client_with_db()
+    with session_factory() as db:
+        create_alias(db, "alpha", "aiprot.space")
+        create_alias(db, "beta", "aiprot.space")
+        create_alias(db, "gamma", "aiprot.space")
+    form = client.get("/admin", headers=auth_header())
+    csrf_token = csrf_token_from(form.text)
+
+    response = client.post(
+        "/admin/aliases/delete",
+        data={"csrf_token": csrf_token, "prefixes": ["alpha", "gamma"]},
+        headers=auth_header(),
+    )
+
+    assert response.status_code == 200
+    with session_factory() as db:
+        alpha = db.query(Alias).filter_by(prefix="alpha").one()
+        beta = db.query(Alias).filter_by(prefix="beta").one()
+        gamma = db.query(Alias).filter_by(prefix="gamma").one()
+        assert alpha.deleted_at is not None
+        assert beta.deleted_at is None
+        assert gamma.deleted_at is not None
+        assert alpha.enabled is False
+        assert beta.enabled is True
+        assert gamma.enabled is False
+
+
+def test_admin_delete_requires_selection():
+    client, _session_factory = client_with_db()
+    form = client.get("/admin", headers=auth_header())
+    csrf_token = csrf_token_from(form.text)
+
+    response = client.post(
+        "/admin/aliases/delete",
+        data={"csrf_token": csrf_token},
+        headers=auth_header(),
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "select aliases to delete"
 
 
 def test_admin_search_filters_aliases():
