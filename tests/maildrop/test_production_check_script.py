@@ -79,6 +79,32 @@ def test_production_check_passes_when_dns_and_services_are_ready(tmp_path):
     assert "READY Maildrop production checks passed." in result.stdout
 
 
+def test_production_check_falls_back_to_tcp_dns_when_udp_times_out(tmp_path):
+    dig_script = """\
+    #!/bin/sh
+    case "$*" in
+      *"+tcp"* )
+        case "$*" in
+          *"A mail.aiprot.space"*) printf '167.71.29.22\\n' ;;
+          *"MX aiprot.space"*) printf '10 mail.aiprot.space.\\n' ;;
+          *"TXT aiprot.space"*) printf '"v=spf1 -all"\\n' ;;
+          *"TXT _dmarc.aiprot.space"*) printf '"v=DMARC1; p=reject; sp=reject"\\n' ;;
+        esac
+        exit 0
+        ;;
+      * )
+        printf ';; connection timed out; no servers could be reached\\n' >&2
+        exit 9
+        ;;
+    esac
+    """
+
+    result = _run_script(tmp_path, dig_script=dig_script, ssh_script=GOOD_SSH)
+
+    assert result.returncode == 0
+    assert "PASS aiprot.space MX -> 10 mail.aiprot.space." in result.stdout
+
+
 def test_dockerfile_disables_uvicorn_access_log_to_avoid_query_token_leaks():
     dockerfile = DOCKERFILE.read_text(encoding="utf-8")
 

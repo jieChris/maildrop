@@ -79,7 +79,14 @@ https://aiprot.space/api/inbox/{prefix}/latest.json?token={token}
 https://aiprot.space/api/inbox/{prefix}/messages.json?token={token}&limit=20
 ```
 
-API token 只在批量生成或后台轮换 token 后显示一次。已有别名如果丢失链接，可在后台对该别名执行“轮换 token”，旧链接会立即失效。
+API token 只在批量生成、后台轮换 token 或导出 API 链接后显示一次。已有别名如果丢失链接，可在后台对该别名执行“轮换 token”，旧链接会立即失效。
+
+后台支持勾选邮箱后导出，也支持导出全部邮箱。导出会为相关邮箱重新生成 token，并下载如下格式的文本文件：
+
+```text
+user001@aiprot.space https://aiprot.space/api/inbox/user001/latest.txt?token=...
+user002@aiprot.space https://aiprot.space/api/inbox/user002/latest.txt?token=...
+```
 
 生产 Docker 启动已关闭 Uvicorn access log，避免 query token 写入应用访问日志。
 

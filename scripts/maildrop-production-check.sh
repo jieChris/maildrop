@@ -37,10 +37,20 @@ if [ "$FAILURES" -ne 0 ]; then
   exit 1
 fi
 
-MAIL_A_RECORDS="$(dig +short A "mail.$DOMAIN" @1.1.1.1 | sort)"
-MX_RECORDS="$(dig +short MX "$DOMAIN" @1.1.1.1 | sort)"
-SPF_RECORDS="$(dig +short TXT "$DOMAIN" @1.1.1.1 | tr -d '"')"
-DMARC_RECORDS="$(dig +short TXT "_dmarc.$DOMAIN" @1.1.1.1 | tr -d '"')"
+dig_short() {
+  record_type="$1"
+  record_name="$2"
+  result="$(dig +short "$record_type" "$record_name" @1.1.1.1 2>&1 | sort)"
+  if [ -z "$result" ] || printf '%s\n' "$result" | grep -qi 'connection timed out'; then
+    result="$(dig +tcp +short "$record_type" "$record_name" @1.1.1.1 2>/dev/null | sort)"
+  fi
+  printf '%s\n' "$result"
+}
+
+MAIL_A_RECORDS="$(dig_short A "mail.$DOMAIN")"
+MX_RECORDS="$(dig_short MX "$DOMAIN")"
+SPF_RECORDS="$(dig_short TXT "$DOMAIN" | tr -d '"')"
+DMARC_RECORDS="$(dig_short TXT "_dmarc.$DOMAIN" | tr -d '"')"
 
 if [ "$MAIL_A_RECORDS" = "$SERVER_IP" ]; then
   pass "mail.$DOMAIN A -> $SERVER_IP"

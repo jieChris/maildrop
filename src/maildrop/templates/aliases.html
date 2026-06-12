@@ -21,6 +21,15 @@
   </form>
 </section>
 
+<section class="panel">
+  <form method="post" action="/admin/aliases/export" id="alias-export-form" class="toolbar">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <button type="submit">导出选中并轮换 token</button>
+    <button type="submit" name="scope" value="all">导出全部并轮换 token</button>
+    <span class="hint">导出会生成新 API 链接，旧链接立即失效。</span>
+  </form>
+</section>
+
 {% if generated %}
 <section class="panel">
   <h3>本次生成</h3>
@@ -34,6 +43,9 @@
   <table>
     <thead>
       <tr>
+        <th>
+          <input type="checkbox" aria-label="选择当前页" onclick="document.querySelectorAll('.alias-select').forEach((item) => { item.checked = this.checked; })">
+        </th>
         <th>邮箱</th>
         <th>状态</th>
         <th>邮件数</th>
@@ -46,6 +58,7 @@
     <tbody>
       {% for item in aliases %}
       <tr>
+        <td><input class="alias-select" form="alias-export-form" type="checkbox" name="prefixes" value="{{ item.alias.prefix }}" aria-label="选择 {{ item.alias.email }}"></td>
         <td><strong>{{ item.alias.email }}</strong></td>
         <td>{{ "启用" if item.alias.enabled else "禁用" }}</td>
         <td>{{ item.alias.message_count }}</td>
@@ -60,7 +73,7 @@
         </td>
       </tr>
       {% else %}
-      <tr><td colspan="7" class="empty">没有匹配的邮箱别名</td></tr>
+      <tr><td colspan="8" class="empty">没有匹配的邮箱别名</td></tr>
       {% endfor %}
     </tbody>
   </table>

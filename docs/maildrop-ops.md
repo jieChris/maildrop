@@ -54,6 +54,11 @@ Plain tokens are only shown once after bulk alias generation or token rotation.
 If a link is lost, open `/admin`, find the alias, and click `轮换 token`. The old
 link stops working immediately and the new link is shown once.
 
+To export existing aliases, open `/admin`, select aliases and click
+`导出选中并轮换 token`, or click `导出全部并轮换 token`. Export returns a
+plain-text attachment with one `email latest.txt-url` pair per line. Exporting
+rotates the affected aliases' tokens; old links stop working immediately.
+
 Do not enable access logging that records full request URIs for Maildrop public
 API paths. The production app starts Uvicorn with `--no-access-log`; Caddy should
 remain without a site access-log directive unless query strings are explicitly
@@ -170,6 +175,8 @@ The script requires exact DNS cutover: `mail.aiprot.space` must have only the
 expected A record, and `aiprot.space` must have only the Maildrop MX record. It
 also checks Caddy, Docker health, Postfix mailapi settings, catch-all regexp,
 mailapi token readability, and public SMTP port reachability once DNS is ready.
+If UDP DNS queries to `1.1.1.1` time out locally, the script retries the same
+checks over TCP before marking DNS as not ready.
 
 After the production check exits `0`, run a real public SMTP smoke test:
 

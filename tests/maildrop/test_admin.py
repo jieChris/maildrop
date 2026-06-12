@@ -18,6 +18,15 @@ def csrf_token_from(html: str) -> str:
     return match.group(1)
 
 
+def exported_token_for(export_text: str, prefix: str) -> str:
+    match = re.search(
+        rf"{prefix}@aiprot\.space https://aiprot\.space/api/inbox/{prefix}/latest\.txt\?token=([A-Za-z0-9_-]+)",
+        export_text,
+    )
+    assert match is not None
+    return match.group(1)
+
+
 def test_admin_requires_basic_auth():
     client, _session_factory = client_with_db()
 
@@ -115,6 +124,90 @@ def test_admin_can_rotate_existing_alias_token_and_show_new_api_link():
     assert client.get(f"/api/inbox/alpha/latest.txt?token={new_token}").status_code == 200
 
 
+def test_admin_exports_selected_aliases_and_rotates_only_selected_tokens():
+    client, session_factory = client_with_db()
+    with session_factory() as db:
+        _alpha, old_alpha_token = create_alias(db, "alpha", "aiprot.space")
+        _beta, old_beta_token = create_alias(db, "beta", "aiprot.space")
+    for prefix in ("alpha", "beta"):
+        client.post(
+            "/internal/ingest",
+            content=RAW,
+            headers={
+                "X-Envelope-Recipient": f"{prefix}@aiprot.space",
+                "X-Ingest-Token": "ingest-secret",
+            },
+        )
+    form = client.get("/admin", headers=auth_header())
+    csrf_token = csrf_token_from(form.text)
+
+    response = client.post(
+        "/admin/aliases/export",
+        data={"csrf_token": csrf_token, "prefixes": ["alpha"]},
+        headers=auth_header(),
+    )
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/plain")
+    assert "attachment; filename=maildrop-alias-links.txt" in response.headers["content-disposition"]
+    assert "alpha@aiprot.space https://aiprot.space/api/inbox/alpha/latest.txt?token=" in response.text
+    assert "beta@aiprot.space" not in response.text
+    new_alpha_token = exported_token_for(response.text, "alpha")
+    assert new_alpha_token != old_alpha_token
+    assert client.get(f"/api/inbox/alpha/latest.txt?token={old_alpha_token}").status_code == 403
+    assert client.get(f"/api/inbox/alpha/latest.txt?token={new_alpha_token}").status_code == 200
+    assert client.get(f"/api/inbox/beta/latest.txt?token={old_beta_token}").status_code == 200
+
+
+def test_admin_exports_all_aliases_and_rotates_all_tokens():
+    client, session_factory = client_with_db()
+    with session_factory() as db:
+        _alpha, old_alpha_token = create_alias(db, "alpha", "aiprot.space")
+        _beta, old_beta_token = create_alias(db, "beta", "aiprot.space")
+    for prefix in ("alpha", "beta"):
+        client.post(
+            "/internal/ingest",
+            content=RAW,
+            headers={
+                "X-Envelope-Recipient": f"{prefix}@aiprot.space",
+                "X-Ingest-Token": "ingest-secret",
+            },
+        )
+    form = client.get("/admin", headers=auth_header())
+    csrf_token = csrf_token_from(form.text)
+
+    response = client.post(
+        "/admin/aliases/export",
+        data={"csrf_token": csrf_token, "scope": "all"},
+        headers=auth_header(),
+    )
+
+    assert response.status_code == 200
+    alpha_token = exported_token_for(response.text, "alpha")
+    beta_token = exported_token_for(response.text, "beta")
+    assert alpha_token != old_alpha_token
+    assert beta_token != old_beta_token
+    assert client.get(f"/api/inbox/alpha/latest.txt?token={old_alpha_token}").status_code == 403
+    assert client.get(f"/api/inbox/beta/latest.txt?token={old_beta_token}").status_code == 403
+    assert client.get(f"/api/inbox/alpha/latest.txt?token={alpha_token}").status_code == 200
+    assert client.get(f"/api/inbox/beta/latest.txt?token={beta_token}").status_code == 200
+
+
+def test_admin_export_requires_selection_or_all_scope():
+    client, _session_factory = client_with_db()
+    form = client.get("/admin", headers=auth_header())
+    csrf_token = csrf_token_from(form.text)
+
+    response = client.post(
+        "/admin/aliases/export",
+        data={"csrf_token": csrf_token},
+        headers=auth_header(),
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "select aliases or export all"
+
+
 def test_admin_search_filters_aliases():
     client, session_factory = client_with_db()
     with session_factory() as db:
@@ -138,7 +231,7 @@ def test_admin_alias_list_is_paginated_for_large_alias_sets():
 
     assert response.status_code == 200
     assert "共 205 个结果，第 2 / 3 页" in response.text
-    assert response.text.count("@aiprot.space") == 100
+    assert response.text.count('name="prefixes"') == 100
     assert "page=1&page_size=100" in response.text
     assert "page=3&page_size=100" in response.text
 

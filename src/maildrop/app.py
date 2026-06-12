@@ -181,6 +181,25 @@ def create_app(
             "latest_txt_url": latest_txt_url(alias, token),
         }
 
+    def rotate_alias_token_view(alias: Alias) -> dict[str, str]:
+        token = new_token()
+        alias.api_token_hash = hash_token(token)
+        return {
+            "email": alias.email,
+            "latest_txt_url": latest_txt_url(alias, token),
+        }
+
+    def exported_alias_links(aliases: list[dict[str, str]]) -> PlainTextResponse:
+        lines = [f"{item['email']} {item['latest_txt_url']}" for item in aliases]
+        body = "\n".join(lines) + "\n"
+        return PlainTextResponse(
+            body,
+            media_type="text/plain; charset=utf-8",
+            headers={
+                "Content-Disposition": "attachment; filename=maildrop-alias-links.txt"
+            },
+        )
+
     def pagination(page: int, page_size: int, total: int) -> dict[str, int | bool]:
         total_pages = max(1, (total + page_size - 1) // page_size)
         return {
@@ -376,22 +395,52 @@ def create_app(
         if alias is None:
             raise HTTPException(status_code=404, detail="alias not found")
 
-        token = new_token()
-        alias.api_token_hash = hash_token(token)
+        generated = [rotate_alias_token_view(alias)]
         db.commit()
         db.refresh(alias)
 
-        generated = [
-            {
-                "email": alias.email,
-                "latest_txt_url": latest_txt_url(alias, token),
-            }
-        ]
         return render_admin(
             request,
             "aliases.html",
             paged_alias_context(db, "", 1, 50, generated=generated),
         )
+
+    @app.post("/admin/aliases/export", response_class=PlainTextResponse)
+    def admin_export_aliases(
+        request: Request,
+        csrf_token: str = Form(""),
+        scope: str = Form(""),
+        prefixes: list[str] | None = Form(None),
+        _: str = Depends(require_admin),
+        db: Session = Depends(db_dep),
+    ) -> PlainTextResponse:
+        require_csrf(request, csrf_token)
+        if scope == "all":
+            aliases = list(
+                db.execute(select(Alias).order_by(Alias.email.asc(), Alias.id.asc()))
+                .scalars()
+                .all()
+            )
+        else:
+            clean_prefixes = sorted({prefix.strip().lower() for prefix in prefixes or [] if prefix.strip()})
+            if not clean_prefixes:
+                raise HTTPException(status_code=400, detail="select aliases or export all")
+            aliases = list(
+                db.execute(
+                    select(Alias)
+                    .where(Alias.prefix.in_(clean_prefixes))
+                    .order_by(Alias.email.asc(), Alias.id.asc())
+                )
+                .scalars()
+                .all()
+            )
+
+        if not aliases:
+            raise HTTPException(status_code=400, detail="no aliases to export")
+
+        exported = [rotate_alias_token_view(alias) for alias in aliases]
+        db.commit()
+        return exported_alias_links(exported)
 
     @app.get("/admin/unassigned", response_class=HTMLResponse)
     def admin_unassigned(
