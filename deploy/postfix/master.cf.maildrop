@@ -1,0 +1,2 @@
+mailapi unix - n n - - pipe
+  flags=Rq user=mailapi argv=/usr/local/bin/mail-api-ingest ${recipient}

@@ -1,0 +1,84 @@
+name: emailengine
+
+services:
+  emailengine:
+    restart: ${RESTART_POLICY:-unless-stopped}
+    image: postalsys/emailengine:${EMAILENGINE_VERSION:-v2.70.0}
+    ports:
+      - "${EMAILENGINE_API_BIND:-127.0.0.1}:${EMAILENGINE_API_PORT:-3000}:3000"
+      - "${EMAILENGINE_SMTP_BIND:-127.0.0.1}:${EMAILENGINE_SMTP_PORT:-2525}:2525"
+      - "${EMAILENGINE_IMAP_BIND:-127.0.0.1}:${EMAILENGINE_IMAP_PORT:-9993}:9993"
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - emailengine-network
+    environment:
+      EENGINE_SETTINGS: ${EENGINE_SETTINGS:-}
+      EENGINE_SECRET: ${EENGINE_SECRET:?set EENGINE_SECRET in .env}
+      EENGINE_REDIS: redis://:${REDIS_PASSWORD:?set REDIS_PASSWORD in .env}@redis:6379/2
+      EENGINE_LOG_LEVEL: ${EENGINE_LOG_LEVEL:-info}
+      EENGINE_WORKERS: ${EENGINE_WORKERS:-4}
+    volumes:
+      - ./overrides/emailengine/views/layout/app.hbs:/emailengine/views/layout/app.hbs:ro
+      - ./overrides/emailengine/static/js/admin-zh.js:/emailengine/static/js/admin-zh.js:ro
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:3000/health"]
+      interval: ${HEALTHCHECK_INTERVAL:-30s}
+      timeout: ${HEALTHCHECK_TIMEOUT:-10s}
+      retries: ${HEALTHCHECK_RETRIES:-3}
+      start_period: ${HEALTHCHECK_START_PERIOD:-40s}
+    logging:
+      driver: json-file
+      options:
+        max-size: ${LOG_MAX_SIZE:-100m}
+        max-file: ${LOG_MAX_FILE:-10}
+        compress: ${LOG_COMPRESS:-true}
+
+  redis:
+    image: redis:${REDIS_VERSION:-7-alpine}
+    restart: ${RESTART_POLICY:-unless-stopped}
+    networks:
+      - emailengine-network
+    command: >
+      sh -c "
+      exec redis-server
+      --requirepass \"$$REDIS_PASSWORD\"
+      --maxmemory-policy noeviction
+      --tcp-backlog 511
+      --tcp-keepalive 300
+      --timeout 0
+      --databases 16
+      --loglevel ${REDIS_LOG_LEVEL:-notice}
+      --save 900 1
+      --save 300 10
+      --save 60 10000
+      --stop-writes-on-bgsave-error yes
+      --rdbcompression yes
+      --rdbchecksum yes
+      "
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?set REDIS_PASSWORD in .env}
+      REDIS_LOG_LEVEL: ${REDIS_LOG_LEVEL:-notice}
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli --no-auth-warning -a \"$${REDIS_PASSWORD}\" ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: 50m
+        max-file: "5"
+        compress: ${LOG_COMPRESS:-true}
+
+networks:
+  emailengine-network:
+    driver: bridge
+
+volumes:
+  redis-data:
+    driver: local

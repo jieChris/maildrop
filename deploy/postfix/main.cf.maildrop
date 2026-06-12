@@ -1,0 +1,15 @@
+myhostname = mail.aiprot.space
+myorigin = /etc/mailname
+inet_interfaces = all
+inet_protocols = ipv4
+mydestination = localhost
+relay_domains =
+smtpd_relay_restrictions = permit_mynetworks reject_unauth_destination
+
+virtual_mailbox_domains = aiprot.space
+virtual_mailbox_maps = regexp:/etc/postfix/virtual_mailbox_regexp
+virtual_transport = mailapi
+mailapi_destination_recipient_limit = 1
+
+message_size_limit = 26214400
+mailbox_size_limit = 0

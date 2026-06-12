@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="page-head">
+  <div>
+    <h2>邮箱别名</h2>
+    <p>共 {{ pagination.total }} 个结果，第 {{ pagination.page }} / {{ pagination.total_pages }} 页</p>
+  </div>
+  <form method="get" action="/admin" class="search-form">
+    <input type="search" name="q" value="{{ q }}" placeholder="搜索前缀或邮箱">
+    <input type="number" name="page_size" min="1" max="200" value="{{ pagination.page_size }}" aria-label="每页数量">
+    <button type="submit">筛选</button>
+  </form>
+</section>
+
+<section class="panel">
+  <form method="post" action="/admin/aliases/bulk" class="toolbar">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label>生成数量 <input type="number" name="count" min="1" max="1000" value="10"></label>
+    <label>前缀长度 <input type="number" name="length" min="6" max="32" value="12"></label>
+    <button type="submit">批量生成</button>
+  </form>
+</section>
+
+{% if generated %}
+<section class="panel">
+  <h3>本次生成</h3>
+  <p class="hint">明文 token 只在这里显示一次，请立即保存需要的 API 链接。</p>
+  <textarea readonly rows="8">{% for item in generated %}{{ item.email }} {{ item.latest_txt_url }}
+{% endfor %}</textarea>
+</section>
+{% endif %}
+
+<section class="panel">
+  <table>
+    <thead>
+      <tr>
+        <th>邮箱</th>
+        <th>状态</th>
+        <th>邮件数</th>
+        <th>最后收信</th>
+        <th>API 链接</th>
+        <th>邮件</th>
+        <th>操作</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in aliases %}
+      <tr>
+        <td><strong>{{ item.alias.email }}</strong></td>
+        <td>{{ "启用" if item.alias.enabled else "禁用" }}</td>
+        <td>{{ item.alias.message_count }}</td>
+        <td>{{ item.alias.last_message_at or "-" }}</td>
+        <td><code>{{ item.latest_txt_url }}</code></td>
+        <td><a href="/admin/aliases/{{ item.alias.prefix }}/messages">查看</a></td>
+        <td>
+          <form method="post" action="/admin/aliases/{{ item.alias.prefix }}/token" class="inline-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button type="submit">轮换 token</button>
+          </form>
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="7" class="empty">没有匹配的邮箱别名</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+<nav class="pager">
+  {% if pagination.has_prev %}
+  <a href="/admin?q={{ q|urlencode }}&page={{ pagination.page - 1 }}&page_size={{ pagination.page_size }}">上一页</a>
+  {% endif %}
+  {% if pagination.has_next %}
+  <a href="/admin?q={{ q|urlencode }}&page={{ pagination.page + 1 }}&page_size={{ pagination.page_size }}">下一页</a>
+  {% endif %}
+</nav>
+{% endblock %}

@@ -1,0 +1,8 @@
+aiprot.space, www.aiprot.space, engine.aiprot.space {
+    handle /internal/* {
+        respond 404
+    }
+
+    encode zstd gzip
+    reverse_proxy 127.0.0.1:8000
+}

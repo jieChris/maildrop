@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="page-head">
+  <div>
+    <h2>未登记邮件</h2>
+    <p>共 {{ pagination.total }} 封，第 {{ pagination.page }} / {{ pagination.total_pages }} 页</p>
+  </div>
+</section>
+
+<section class="panel">
+  <table>
+    <thead>
+      <tr>
+        <th>收件人</th>
+        <th>发件人</th>
+        <th>主题</th>
+        <th>时间</th>
+        <th>原因</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for message in messages %}
+      <tr>
+        <td><strong>{{ message.recipient }}</strong></td>
+        <td>{{ message.sender }}</td>
+        <td>{{ message.subject or "-" }}</td>
+        <td>{{ message.received_at }}</td>
+        <td><code>{{ message.reason }}</code></td>
+      </tr>
+      {% else %}
+      <tr><td colspan="5" class="empty">暂无未登记邮件</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+<nav class="pager">
+  {% if pagination.has_prev %}
+  <a href="/admin/unassigned?page={{ pagination.page - 1 }}&page_size={{ pagination.page_size }}">上一页</a>
+  {% endif %}
+  {% if pagination.has_next %}
+  <a href="/admin/unassigned?page={{ pagination.page + 1 }}&page_size={{ pagination.page_size }}">下一页</a>
+  {% endif %}
+</nav>
+{% endblock %}

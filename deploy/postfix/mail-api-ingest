@@ -1,0 +1,44 @@
+#!/bin/sh
+set -eu
+
+PATH=/usr/sbin:/usr/bin:/sbin:/bin
+RECIPIENT="${1:-}"
+ENV_FILE=/etc/mail-api-ingest.env
+INGEST_URL="${INGEST_URL:-http://127.0.0.1:8000/internal/ingest}"
+
+tempfail() {
+  echo "$1" >&2
+  exit 75
+}
+
+[ -n "$RECIPIENT" ] || tempfail "missing recipient"
+[ -r "$ENV_FILE" ] || tempfail "missing or unreadable $ENV_FILE"
+command -v curl >/dev/null 2>&1 || tempfail "curl is not installed"
+
+. "$ENV_FILE"
+[ -n "${INGEST_TOKEN:-}" ] || tempfail "INGEST_TOKEN is empty"
+
+RESPONSE_BODY="$(mktemp)"
+trap 'rm -f "$RESPONSE_BODY"' EXIT
+
+HTTP_STATUS="$(curl --silent --show-error \
+  --output "$RESPONSE_BODY" \
+  --write-out "%{http_code}" \
+  --connect-timeout 5 \
+  --max-time 60 \
+  -X POST "$INGEST_URL" \
+  -H "X-Envelope-Recipient: $RECIPIENT" \
+  -H "X-Ingest-Token: $INGEST_TOKEN" \
+  -H "Content-Type: message/rfc822" \
+  --data-binary @-)" || tempfail "maildrop ingest request failed"
+
+case "$HTTP_STATUS" in
+  2??)
+    exit 0
+    ;;
+  *)
+    echo "maildrop ingest returned HTTP $HTTP_STATUS" >&2
+    cat "$RESPONSE_BODY" >&2
+    tempfail "maildrop ingest did not accept message"
+    ;;
+esac

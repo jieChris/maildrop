@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ title }} - Maildrop</title>
+  <link rel="stylesheet" href="/static/admin.css">
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <h1>Maildrop 管理后台</h1>
+      <p>收信别名与未登记邮件运维面板</p>
+    </div>
+    <nav>
+      <a href="/admin">邮箱别名</a>
+      <a href="/admin/unassigned">未登记邮件</a>
+    </nav>
+  </header>
+  <main>
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>

@@ -1,0 +1,238 @@
+# Maildrop Operations
+
+## Current Production Status
+
+Maildrop, PostgreSQL, Postfix, and Caddy are already deployed on `167.71.29.22`.
+DNS has been cut over from Spaceship Email Forwarding Free to the self-hosted
+Maildrop receive path.
+
+Current public DNS target:
+
+```text
+NS aiprot.space             launch1.spaceship.net.
+NS aiprot.space             launch2.spaceship.net.
+SOA aiprot.space            launch1.spaceship.net. support.spaceship.com.
+mail.aiprot.space A         167.71.29.22
+aiprot.space MX             10 mail.aiprot.space.
+aiprot.space TXT            "v=spf1 -all"
+_dmarc.aiprot.space TXT     "v=DMARC1; p=reject; sp=reject; adkim=s; aspf=s"
+```
+
+Last verified on 2026-06-12 with:
+
+```bash
+scripts/maildrop-production-check.sh aiprot.space emailengine 167.71.29.22
+scripts/maildrop-public-smoke.py aiprot.space emailengine 167.71.29.22
+```
+
+Both commands exited `0`; the public smoke message landed in
+`unassigned_messages`. Latest post-deploy smoke recipient:
+`public-smoke-1781235784-43e1af3d@aiprot.space`.
+
+## DNS
+
+Set these records for `aiprot.space`:
+
+```text
+mail.aiprot.space.  A    167.71.29.22
+aiprot.space.       MX   10 mail.aiprot.space.
+aiprot.space.       TXT  "v=spf1 -all"
+_dmarc.aiprot.space TXT  "v=DMARC1; p=reject; sp=reject; adkim=s; aspf=s"
+```
+
+Maildrop is receive-only. If `aiprot.space` later needs to send mail, replace the SPF and DMARC policy with records for the actual sending provider before sending production mail.
+
+## API Tokens And Logs
+
+Public inbox URLs use query tokens so they can be opened directly:
+
+```text
+https://aiprot.space/api/inbox/{prefix}/latest.txt?token={token}
+```
+
+Plain tokens are only shown once after bulk alias generation or token rotation.
+If a link is lost, open `/admin`, find the alias, and click `轮换 token`. The old
+link stops working immediately and the new link is shown once.
+
+Do not enable access logging that records full request URIs for Maildrop public
+API paths. The production app starts Uvicorn with `--no-access-log`; Caddy should
+remain without a site access-log directive unless query strings are explicitly
+redacted.
+
+## Deploy App
+
+Generate secrets and start the app:
+
+```bash
+cd /opt/maildrop
+cp .env.maildrop.example .env.maildrop
+openssl rand -hex 24
+openssl rand -hex 24
+openssl rand -hex 24
+vim .env.maildrop
+docker compose -f docker-compose.maildrop.yml up -d --build
+curl -fsS http://127.0.0.1:8000/api/health
+```
+
+Use the three random values for `POSTGRES_PASSWORD`, `ADMIN_PASSWORD`, and `INGEST_TOKEN`. Keep `DATABASE_URL` and `POSTGRES_PASSWORD` in sync. Keep `MAX_MESSAGE_BYTES` and Postfix `message_size_limit` in sync so oversized mail is rejected at SMTP time instead of being accepted and then rejected by HTTP ingest.
+
+## Install Postfix
+
+Install packages and create the local pipe user:
+
+```bash
+apt-get update
+apt-get install -y postfix curl
+useradd -r -s /usr/sbin/nologin mailapi || true
+```
+
+Install the ingest script and token file:
+
+```bash
+cd /opt/maildrop
+install -m 0755 deploy/postfix/mail-api-ingest /usr/local/bin/mail-api-ingest
+tmp_env="$(mktemp)"
+printf 'INGEST_TOKEN=%s\n' "$(grep '^INGEST_TOKEN=' .env.maildrop | cut -d= -f2-)" > "$tmp_env"
+install -o root -g mailapi -m 0640 "$tmp_env" /etc/mail-api-ingest.env
+rm -f "$tmp_env"
+```
+
+Apply `main.cf` settings idempotently:
+
+```bash
+cd /opt/maildrop
+while IFS= read -r line; do
+  case "$line" in
+    ''|'#'*) continue ;;
+  esac
+  postconf -e "$line"
+done < deploy/postfix/main.cf.maildrop
+```
+
+Create the catch-all recipient map:
+
+```bash
+printf '/^.+@aiprot\\.space$/ catchall\n' > /etc/postfix/virtual_mailbox_regexp
+postmap -q 'probe@aiprot.space' regexp:/etc/postfix/virtual_mailbox_regexp
+```
+
+Install the `mailapi` transport idempotently:
+
+```bash
+postconf -M -e 'mailapi/unix=mailapi unix - n n - - pipe flags=Rq user=mailapi argv=/usr/local/bin/mail-api-ingest ${recipient}'
+```
+
+Validate and restart:
+
+```bash
+postfix check
+sudo -u mailapi sh -c '. /etc/mail-api-ingest.env; test -n "$INGEST_TOKEN"'
+systemctl restart postfix
+systemctl enable postfix
+```
+
+## Verify Receive Path
+
+Check DNS:
+
+```bash
+dig +short A mail.aiprot.space @1.1.1.1
+dig +short MX aiprot.space @1.1.1.1
+```
+
+Send a local SMTP test if `swaks` is available:
+
+```bash
+swaks --to testunknown@aiprot.space --from sender@example.net --server 127.0.0.1
+```
+
+Inspect app logs:
+
+```bash
+docker compose -f docker-compose.maildrop.yml logs --tail=100 app
+```
+
+Unknown recipients should appear in `/admin/unassigned`.
+
+Run the repeatable production check from the project root:
+
+```bash
+scripts/maildrop-production-check.sh aiprot.space emailengine 167.71.29.22
+```
+
+Exit codes:
+
+- `0`: DNS, HTTPS, Docker, and Postfix checks passed.
+- `1`: service or server check failed.
+- `2`: services are reachable but DNS is not fully switched to Maildrop yet.
+
+The script requires exact DNS cutover: `mail.aiprot.space` must have only the
+expected A record, and `aiprot.space` must have only the Maildrop MX record. It
+also checks Caddy, Docker health, Postfix mailapi settings, catch-all regexp,
+mailapi token readability, and public SMTP port reachability once DNS is ready.
+
+After the production check exits `0`, run a real public SMTP smoke test:
+
+```bash
+scripts/maildrop-public-smoke.py aiprot.space emailengine 167.71.29.22
+```
+
+This sends a unique message to `public-smoke-...@aiprot.space` through
+`mail.aiprot.space:25`, then queries PostgreSQL on the server to confirm the
+message landed in `unassigned_messages`.
+
+## Back Up PostgreSQL
+
+Create a compressed backup:
+
+```bash
+cd /opt/maildrop
+docker compose -f docker-compose.maildrop.yml exec -T postgres \
+  pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB" | gzip > "maildrop-$(date +%F).sql.gz"
+```
+
+Restore into an empty database:
+
+```bash
+cd /opt/maildrop
+gunzip -c maildrop-YYYY-MM-DD.sql.gz | docker compose -f docker-compose.maildrop.yml exec -T postgres \
+  psql -U "$POSTGRES_USER" "$POSTGRES_DB"
+```
+
+## Clean Up Old Mail
+
+Maildrop keeps registered alias mail for `MESSAGE_RETENTION_DAYS` and
+unassigned mail for `UNASSIGNED_RETENTION_DAYS`. Defaults:
+
+```dotenv
+MESSAGE_RETENTION_DAYS=180
+UNASSIGNED_RETENTION_DAYS=30
+```
+
+Run cleanup manually:
+
+```bash
+cd /opt/maildrop
+docker compose -f docker-compose.maildrop.yml exec -T app python -m maildrop.cli cleanup --dry-run
+docker compose -f docker-compose.maildrop.yml exec -T app python -m maildrop.cli cleanup
+```
+
+Run `--dry-run` first after changing retention settings or before enabling cron
+on a production database.
+
+Install a daily cron job:
+
+```bash
+cat >/etc/cron.d/maildrop-cleanup <<'EOF'
+17 3 * * * root cd /opt/maildrop && flock -n /var/lock/maildrop-cleanup.lock docker compose -f docker-compose.maildrop.yml exec -T app python -m maildrop.cli cleanup >> /var/log/maildrop-cleanup.log 2>&1
+EOF
+```
+
+## Roll Back To EmailEngine
+
+Do not delete Maildrop or EmailEngine volumes during the first production test window.
+
+```bash
+cd /opt/emailengine
+docker compose up -d
+```
