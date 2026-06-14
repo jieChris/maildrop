@@ -243,6 +243,15 @@ def create_app(
             ).scalar_one()
         )
 
+    def mail_domain_options(db: Session) -> list[dict[str, object]]:
+        return [
+            {
+                "domain": domain,
+                "alias_count": alias_count_for_domain(db, domain),
+            }
+            for domain in managed_mail_domains(db)
+        ]
+
     def subdomain_context(db: Session, notice: str = "") -> dict[str, object]:
         env_domains = set(app_settings.registered_mail_subdomains)
         db_domains = list(
@@ -643,6 +652,7 @@ def create_app(
             "q": q,
             "category": category,
             "mail_domains": managed_mail_domains(db),
+            "mail_domain_options": mail_domain_options(db),
             "mail_domain_filter": mail_domain_filter.strip().lower(),
             "pagination": pagination(page, page_size, total),
         }

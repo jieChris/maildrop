@@ -111,6 +111,31 @@ def test_admin_bulk_form_lists_configured_mail_suffixes():
     assert '<option value="b.exa.aiprot.space"' in response.text
 
 
+def test_admin_bulk_form_shows_existing_alias_count_for_each_suffix():
+    client, session_factory = client_with_db()
+    with session_factory() as db:
+        create_alias(db, "alpha", "aiprot.space")
+        create_alias(
+            db,
+            "bravo--ssn-aiprot-space",
+            "ssn.aiprot.space",
+            email="bravo@ssn.aiprot.space",
+        )
+        create_alias(
+            db,
+            "charlie--ssn-aiprot-space",
+            "ssn.aiprot.space",
+            email="charlie@ssn.aiprot.space",
+        )
+
+    response = client.get("/admin", headers=auth_header())
+
+    assert response.status_code == 200
+    assert '<option value="aiprot.space">aiprot.space-------1</option>' in response.text
+    assert '<option value="ssn.aiprot.space">ssn.aiprot.space-------2</option>' in response.text
+    assert '<option value="sso.aiprot.space">sso.aiprot.space-------0</option>' in response.text
+
+
 def test_admin_bulk_generates_aliases_for_selected_subdomain():
     client, session_factory = client_with_db()
     form = client.get("/admin", headers=auth_header())
@@ -230,7 +255,7 @@ def test_admin_can_register_exa_subdomain_from_ui_and_use_it_for_generation():
 
     assert response.status_code == 303
     admin = client.get("/admin", headers=auth_header())
-    assert '<option value="c.exa.aiprot.space">c.exa.aiprot.space</option>' in admin.text
+    assert '<option value="c.exa.aiprot.space">c.exa.aiprot.space-------0</option>' in admin.text
     csrf_token = csrf_token_from(admin.text)
     generated = client.post(
         "/admin/aliases/bulk",

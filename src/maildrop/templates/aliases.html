@@ -35,8 +35,8 @@
     <label>前缀长度 <input type="number" name="length" min="6" max="32" value="12"></label>
     <label>邮箱后缀
       <select name="mail_domain">
-        {% for domain in mail_domains %}
-        <option value="{{ domain }}">{{ domain }}</option>
+        {% for option in mail_domain_options %}
+        <option value="{{ option.domain }}">{{ option.domain }}-------{{ option.alias_count }}</option>
         {% endfor %}
       </select>
     </label>
