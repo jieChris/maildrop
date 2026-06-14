@@ -14,6 +14,17 @@ class Settings(BaseSettings):
     max_message_bytes: int = Field(default=26_214_400, alias="MAX_MESSAGE_BYTES")
     message_retention_days: int = Field(default=180, alias="MESSAGE_RETENTION_DAYS")
     unassigned_retention_days: int = Field(default=30, alias="UNASSIGNED_RETENTION_DAYS")
+    spaceship_api_key: str = Field(default="", alias="SPACESHIP_API_KEY")
+    spaceship_api_secret: str = Field(default="", alias="SPACESHIP_API_SECRET")
+    spaceship_dns_domain: str = Field(default="", alias="SPACESHIP_DNS_DOMAIN")
+    spaceship_api_base_url: str = Field(
+        default="https://spaceship.dev/api/v1",
+        alias="SPACESHIP_API_BASE_URL",
+    )
+    spaceship_auto_register_txt_prefix: str = Field(
+        default="openai-domain-verification=",
+        alias="SPACESHIP_AUTO_REGISTER_TXT_PREFIX",
+    )
 
     model_config = SettingsConfigDict(
         env_file=".env.maildrop",

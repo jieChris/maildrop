@@ -71,6 +71,10 @@ DATABASE_URL=postgresql+psycopg://maildrop:<同一个随机值>@postgres:5432/ma
 ADMIN_USERNAME=admin
 ADMIN_PASSWORD=<随机值>
 INGEST_TOKEN=<随机值>
+SPACESHIP_API_KEY=
+SPACESHIP_API_SECRET=
+SPACESHIP_DNS_DOMAIN=example.com
+SPACESHIP_AUTO_REGISTER_TXT_PREFIX=openai-domain-verification=
 ```
 
 如果已经确定要预置子域名，可设置：
@@ -80,6 +84,11 @@ MAIL_REGISTERED_SUBDOMAINS=a.exa.example.com,b.exa.example.com
 ```
 
 后续也可以在后台 `/admin/subdomains` 继续新增。
+
+如果要让后台从 Spaceship 自动同步 OpenAI TXT 验证子域名，配置
+`SPACESHIP_API_KEY` 和 `SPACESHIP_API_SECRET`。API Key 只需要
+`domains:read` 和 `dnsrecords:read` 权限，不需要写权限。Spaceship 具体
+DNS 和 API 配置见 `docs/spaceship-dns.md`。
 
 ## 5. 启动数据库和应用
 

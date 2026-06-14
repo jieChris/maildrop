@@ -25,6 +25,17 @@
 </section>
 
 <section class="panel">
+  <form method="post" action="/admin/subdomains/sync-spaceship" class="toolbar">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <button type="submit" {{ '' if spaceship_enabled else 'disabled' }}>从 Spaceship TXT 记录同步</button>
+    <span class="hint">
+      读取 {{ parent_domain }} 下 openai-domain-verification TXT，自动登记未存在的子域名。
+      {% if not spaceship_enabled %}未配置 Spaceship API Key/Secret。{% endif %}
+    </span>
+  </form>
+</section>
+
+<section class="panel">
   <table>
     <thead>
       <tr>

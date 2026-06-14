@@ -25,7 +25,11 @@ def settings() -> Settings:
     )
 
 
-def client_with_db(max_message_bytes: int = 26_214_400):
+def client_with_db(
+    max_message_bytes: int = 26_214_400,
+    app_settings: Settings | None = None,
+    spaceship_transport=None,
+):
     engine = create_engine_from_url(
         "sqlite+pysqlite:///:memory:",
         connect_args={"check_same_thread": False},
@@ -33,7 +37,12 @@ def client_with_db(max_message_bytes: int = 26_214_400):
     )
     create_schema(engine)
     session_factory = make_session_factory(engine)
-    app = create_app(settings(), session_factory=session_factory, max_message_bytes=max_message_bytes)
+    app = create_app(
+        app_settings or settings(),
+        session_factory=session_factory,
+        max_message_bytes=max_message_bytes,
+        spaceship_transport=spaceship_transport,
+    )
     return TestClient(app, base_url="https://testserver"), session_factory
 
 

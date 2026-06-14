@@ -174,3 +174,69 @@ DNS 只负责把邮件送到服务器。还需要在 Maildrop 后台：
 ### `@exa.example.com` 收不到
 
 `exa.example.com` 不是通配记录覆盖范围，需要单独添加 `exa` 的 MX/TXT，并且在应用配置中加入 `exa.example.com`。
+
+## 通过 Spaceship API 自动登记 OpenAI TXT 子域名
+
+如果你会在 Spaceship 中添加类似记录：
+
+```text
+主机: urxg.exa
+类型: TXT
+值: openai-domain-verification=xxxx
+```
+
+可以让 Maildrop 后台读取 Spaceship DNS 记录，并自动把
+`urxg.exa.example.com` 登记为可生成邮箱的子域名。
+
+### API 权限
+
+Spaceship API Key 只需要读取权限：
+
+```text
+domains:read
+dnsrecords:read
+```
+
+不要给 `dnsrecords:write`，除非你明确要让系统以后自动修改 DNS。
+当前同步功能只读取 TXT 记录，不会创建、修改或删除 Spaceship DNS 记录。
+
+### 环境变量
+
+在服务器 `.env.maildrop` 中配置：
+
+```dotenv
+SPACESHIP_API_KEY=你的只读 API Key
+SPACESHIP_API_SECRET=你的只读 API Secret
+SPACESHIP_DNS_DOMAIN=example.com
+SPACESHIP_AUTO_REGISTER_TXT_PREFIX=openai-domain-verification=
+```
+
+修改后重启 app：
+
+```bash
+cd /opt/maildrop
+docker compose -f docker-compose.maildrop.yml up -d app
+```
+
+### 后台同步
+
+打开：
+
+```text
+https://example.com/admin/subdomains
+```
+
+点击：
+
+```text
+从 Spaceship TXT 记录同步
+```
+
+系统会读取 `example.com` 的 DNS 记录，匹配：
+
+- 类型是 `TXT`
+- 主机名属于 `*.exa.example.com`
+- TXT 值以 `openai-domain-verification=` 开头
+- 当前还没有登记到 Maildrop
+
+匹配成功后会自动新增到子域名管理列表，批量生成邮箱的后缀下拉也会出现对应后缀。

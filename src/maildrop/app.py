@@ -45,6 +45,7 @@ from maildrop.repository import (
 )
 from maildrop.schemas import MessageOut
 from maildrop.security import hash_token, new_token, verify_token
+from maildrop.spaceship import SpaceshipDnsError, SpaceshipDnsSyncClient
 
 
 DEFAULT_MAX_MESSAGE_BYTES = 26_214_400
@@ -85,6 +86,7 @@ def create_app(
     settings: Settings | None = None,
     session_factory: SessionMaker[Session] | None = None,
     max_message_bytes: int | None = None,
+    spaceship_transport: httpx.BaseTransport | None = None,
 ) -> FastAPI:
     app_settings = settings or get_settings()
     effective_max_message_bytes = max_message_bytes or app_settings.max_message_bytes
@@ -219,14 +221,18 @@ def create_app(
             [*app_settings.accepted_mail_domains, *database_registered_domains(db)]
         )
 
+    def registered_subdomain_parent() -> str:
+        return f"exa.{app_settings.mail_domain.strip().lower()}"
+
     def normalize_registered_subdomain(value: str) -> str:
         clean = value.strip().lower().rstrip(".")
-        suffix = f".{REGISTERED_SUBDOMAIN_PARENT}"
+        parent = registered_subdomain_parent()
+        suffix = f".{parent}"
         if clean.endswith(suffix):
             clean = clean[: -len(suffix)]
         if "." in clean or not REGISTERED_SUBDOMAIN_LABEL_RE.fullmatch(clean):
             raise ValueError("invalid subdomain")
-        return f"{clean}.{REGISTERED_SUBDOMAIN_PARENT}"
+        return f"{clean}.{parent}"
 
     def alias_count_for_domain(db: Session, domain: str) -> int:
         return int(
@@ -271,9 +277,53 @@ def create_app(
         return {
             "title": "子域名管理",
             "subdomains": rows,
-            "parent_domain": REGISTERED_SUBDOMAIN_PARENT,
+            "parent_domain": registered_subdomain_parent(),
+            "spaceship_enabled": spaceship_api_is_configured(),
             "notice": notice,
         }
+
+    def spaceship_api_is_configured() -> bool:
+        return bool(app_settings.spaceship_api_key and app_settings.spaceship_api_secret)
+
+    def spaceship_sync_client() -> SpaceshipDnsSyncClient:
+        if not spaceship_api_is_configured():
+            raise HTTPException(status_code=400, detail="spaceship api is not configured")
+        return SpaceshipDnsSyncClient(
+            api_key=app_settings.spaceship_api_key,
+            api_secret=app_settings.spaceship_api_secret,
+            domain=app_settings.spaceship_dns_domain or app_settings.mail_domain,
+            base_url=app_settings.spaceship_api_base_url,
+            transport=spaceship_transport,
+        )
+
+    def sync_spaceship_openai_subdomains(db: Session) -> str:
+        try:
+            records = spaceship_sync_client().openai_verification_subdomains(
+                parent_domain=registered_subdomain_parent(),
+                txt_prefix=app_settings.spaceship_auto_register_txt_prefix,
+            )
+        except SpaceshipDnsError as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+        existing = set(managed_mail_domains(db))
+        created: list[str] = []
+        skipped = 0
+        for record in records:
+            try:
+                domain = normalize_registered_subdomain(record.domain)
+            except ValueError:
+                skipped += 1
+                continue
+            if domain in existing:
+                skipped += 1
+                continue
+            db.add(RegisteredSubdomain(domain=domain))
+            existing.add(domain)
+            created.append(domain)
+        db.commit()
+        if created:
+            return f"从 Spaceship TXT 记录新增 {len(created)} 个：{', '.join(created)}；跳过 {skipped} 个"
+        return f"没有新增子域名；跳过 {skipped} 个"
 
     def alias_route_key_for_recipient(db: Session, local_part: str, domain: str) -> str:
         clean_local = local_part.strip().lower()
@@ -725,6 +775,17 @@ def create_app(
             db.add(RegisteredSubdomain(domain=domain))
             db.commit()
         return RedirectResponse("/admin/subdomains", status_code=303)
+
+    @app.post("/admin/subdomains/sync-spaceship", response_class=HTMLResponse)
+    def admin_sync_spaceship_subdomains(
+        request: Request,
+        csrf_token: str = Form(""),
+        _: str = Depends(require_admin),
+        db: Session = Depends(db_dep),
+    ) -> HTMLResponse:
+        require_csrf(request, csrf_token)
+        notice = sync_spaceship_openai_subdomains(db)
+        return render_admin(request, "subdomains.html", subdomain_context(db, notice=notice))
 
     @app.post("/admin/subdomains/{subdomain_id}/delete")
     def admin_delete_subdomain(

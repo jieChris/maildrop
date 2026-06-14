@@ -51,6 +51,7 @@ Spaceship 操作细节见 `docs/spaceship-dns.md`。
 - 后台用户名，默认可用 `admin`。
 - 是否需要固定子域名，例如 `ssn.example.com`。
 - 是否需要登记式 `exa` 通配子域名。
+- 是否需要 Spaceship 只读 API 同步 OpenAI TXT 子域名。
 - 是否要保留 EmailEngine 历史文件；新部署通常只需要 Maildrop。
 
 ## 服务器部署步骤
@@ -95,8 +96,14 @@ ssh "$SSH_HOST" "cd $APP_DIR && cp .env.maildrop.example .env.maildrop"
 - `ADMIN_USERNAME`
 - `ADMIN_PASSWORD`
 - `INGEST_TOKEN`
+- 可选 `SPACESHIP_API_KEY`
+- 可选 `SPACESHIP_API_SECRET`
+- 可选 `SPACESHIP_DNS_DOMAIN=$DOMAIN`
 
 不得把真实密码输出到对话中。
+
+如果部署者提供 Spaceship API，只要求只读权限：`domains:read` 和
+`dnsrecords:read`。不要要求或保存 `dnsrecords:write`，当前功能不需要写 DNS。
 
 启动应用：
 
@@ -193,3 +200,6 @@ https://<domain>/admin/subdomains
 ```
 
 新增 `c.exa.<domain>` 时，在子域名管理里输入 `c`。DNS 已配置 `*.exa` 后，不需要再改 DNS。
+
+如果配置了 Spaceship API，可点击“从 Spaceship TXT 记录同步”。AI 应提醒部署者：
+该按钮只读取 `openai-domain-verification=` TXT，不会修改 Spaceship DNS。
