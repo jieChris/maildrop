@@ -2,6 +2,9 @@
 
 本文件给 Codex/AI 部署代理读取。所有回复默认使用简体中文。
 
+详细傻瓜自动部署步骤见 `docs/deploy-for-ai.md`。如果本文件和
+`docs/deploy-for-ai.md` 都提到同一事项，以更具体、更保守的要求为准。
+
 ## 项目目标
 
 Maildrop 是一个自托管轻量收信系统：

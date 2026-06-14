@@ -9,6 +9,9 @@
 
 部署时把示例域名和 IP 替换成你自己的值。
 
+如果你只是想知道“我应该填什么”，先看 `docs/deploy-for-humans.md`。
+如果你要把部署交给 AI/Codex 执行，先让它读取 `docs/deploy-for-ai.md`。
+
 ## 1. DNS
 
 在 DNS 服务商添加。如果使用 Spaceship，界面填写方式和冲突处理见

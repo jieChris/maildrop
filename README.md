@@ -26,6 +26,8 @@ Maildrop 是一个轻量自托管收信服务，用 Postfix 接收 catch-all 邮
 - `Dockerfile`：FastAPI 应用镜像。
 - `docker-compose.maildrop.yml`：Maildrop + PostgreSQL 部署。
 - `.env.maildrop.example`：可提交的 Maildrop 环境变量模板。
+- `docs/deploy-for-humans.md`：给人类看的傻瓜部署填写清单。
+- `docs/deploy-for-ai.md`：给 Codex/AI 部署代理看的自动部署指南。
 - `docs/deploy-from-scratch.md`：给新服务器/新域名使用的通用部署指南。
 - `docs/spaceship-dns.md`：Spaceship DNS 配置和 MX 冲突处理指南。
 - `AGENTS.md`：给 Codex/AI 部署代理读取的自动部署说明。
@@ -37,6 +39,12 @@ Maildrop 是一个轻量自托管收信服务，用 Postfix 接收 catch-all 邮
 
 ```bash
 .venv/bin/python -m pytest tests/maildrop -v
+```
+
+如果本地 `.env.maildrop` 已填生产域名、子域名或 Spaceship API 配置，测试前可用空值覆盖这些可选项，避免测试读取本地私有配置：
+
+```bash
+MAIL_DOMAINS='' MAIL_REGISTERED_SUBDOMAINS='' SPACESHIP_API_KEY='' SPACESHIP_API_SECRET='' SPACESHIP_DNS_DOMAIN='' SPACESHIP_AUTO_REGISTER_TXT_PREFIX='' .venv/bin/python -m pytest tests/maildrop -q
 ```
 
 ## Docker Compose 配置检查
@@ -121,7 +129,13 @@ user002@example.com----https://example.com/api/inbox/user002/latest.txt?token=..
 
 ## 从零部署
 
-见 `docs/deploy-from-scratch.md`。核心流程是：
+如果你是人类部署者，先看 `docs/deploy-for-humans.md`，把域名、服务器 IP、
+SSH、后台密码、数据库密码、DNS 和可选 Spaceship API 信息填好。
+
+如果你把项目交给 Codex/AI 部署，先让它读取 `docs/deploy-for-ai.md` 和
+`AGENTS.md`，它会知道哪些步骤能自动做，哪些 DNS/API 信息必须提醒你手动配置。
+
+完整命令见 `docs/deploy-from-scratch.md`。核心流程是：
 
 1. 配置 DNS：`mail.<domain>` A 记录、根域 MX、SPF、DMARC。
 2. 复制 `.env.maildrop.example` 为 `.env.maildrop` 并填入域名、数据库密码、后台密码和 ingest token。
