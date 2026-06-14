@@ -91,3 +91,20 @@ def test_alembic_upgrade_creates_managed_inboxes_table(tmp_path):
         "created_at",
         "updated_at",
     }.issubset(columns)
+
+
+def test_alembic_upgrade_creates_registered_subdomains_table(tmp_path):
+    database_path = tmp_path / "maildrop.db"
+    database_url = f"sqlite:///{database_path}"
+    create_pre_migration_aliases_schema(database_url)
+    config = Config(str(ROOT / "alembic.ini"))
+    config.set_main_option("script_location", str(ROOT / "migrations"))
+    config.set_main_option("sqlalchemy.url", database_url)
+
+    command.upgrade(config, "head")
+
+    engine = create_engine(database_url, future=True)
+    inspector = inspect(engine)
+    assert "registered_subdomains" in inspector.get_table_names()
+    columns = {column["name"] for column in inspector.get_columns("registered_subdomains")}
+    assert {"domain", "created_at"}.issubset(columns)

@@ -5,6 +5,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     app_base_url: str = Field(alias="APP_BASE_URL")
     mail_domain: str = Field(alias="MAIL_DOMAIN")
+    mail_domains: str = Field(default="", alias="MAIL_DOMAINS")
+    mail_registered_subdomains: str = Field(default="", alias="MAIL_REGISTERED_SUBDOMAINS")
     database_url: str = Field(alias="DATABASE_URL")
     admin_username: str = Field(alias="ADMIN_USERNAME")
     admin_password: str = Field(alias="ADMIN_PASSWORD")
@@ -40,6 +42,29 @@ class Settings(BaseSettings):
         if value <= 0:
             raise ValueError("value must be positive")
         return value
+
+    @property
+    def registered_mail_subdomains(self) -> tuple[str, ...]:
+        return self._clean_domains(self.mail_registered_subdomains.split(","))
+
+    @property
+    def accepted_mail_domains(self) -> tuple[str, ...]:
+        domains = [self.mail_domain]
+        domains.extend(part.strip() for part in self.mail_domains.split(","))
+        domains.extend(self.registered_mail_subdomains)
+        return self._clean_domains(domains)
+
+    @staticmethod
+    def _clean_domains(domains) -> tuple[str, ...]:
+        clean_domains: list[str] = []
+        seen: set[str] = set()
+        for domain in domains:
+            clean = domain.strip().lower()
+            if not clean or clean in seen:
+                continue
+            seen.add(clean)
+            clean_domains.append(clean)
+        return tuple(clean_domains)
 
 
 def get_settings() -> Settings:

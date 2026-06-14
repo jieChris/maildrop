@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="page-head">
+  <div>
+    <h2>子域名管理</h2>
+    <p>登记后可在批量生成中选择对应邮箱后缀。</p>
+  </div>
+</section>
+
+{% if notice %}
+<section class="panel">
+  <p class="hint">{{ notice }}</p>
+</section>
+{% endif %}
+
+<section class="panel">
+  <form method="post" action="/admin/subdomains" class="toolbar">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label>子域名前缀
+      <input type="text" name="subdomain" placeholder="例如 c 或 openai01" autocomplete="off" required>
+    </label>
+    <span class="hint">自动生成 .{{ parent_domain }}</span>
+    <button type="submit">新增</button>
+  </form>
+</section>
+
+<section class="panel">
+  <table>
+    <thead>
+      <tr>
+        <th>邮箱后缀</th>
+        <th>来源</th>
+        <th>邮箱数</th>
+        <th>操作</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in subdomains %}
+      <tr>
+        <td><strong>{{ item.domain }}</strong></td>
+        <td>{{ item.source }}</td>
+        <td>{{ item.alias_count }}</td>
+        <td>
+          {% if item.deletable %}
+          <form method="post" action="/admin/subdomains/{{ item.id }}/delete" class="inline-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button type="submit">删除</button>
+          </form>
+          {% elif item.id %}
+          <span class="hint">已有邮箱，不能删除</span>
+          {% else %}
+          <span class="hint">配置文件管理</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="4" class="empty">暂无后台登记的子域名</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endblock %}

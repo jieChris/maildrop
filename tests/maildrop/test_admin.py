@@ -1,8 +1,9 @@
 from base64 import b64encode
 from datetime import datetime, timedelta, timezone
 import re
+from urllib.parse import urlparse
 
-from maildrop.models import Alias, Message, UnassignedMessage
+from maildrop.models import Alias, ManagedInbox, Message, RegisteredSubdomain, UnassignedMessage
 from maildrop.repository import create_alias
 from tests.maildrop.test_api import RAW, client_with_db
 
@@ -88,6 +89,245 @@ def test_admin_bulk_generates_aliases_and_latest_links_with_csrf():
     assert response.text.count("@aiprot.space") >= 2
     assert response.text.count("/api/inbox/") >= 2
     assert response.text.count("/latest.txt?token=") >= 2
+
+
+def test_admin_bulk_form_lists_configured_mail_suffixes():
+    client, _session_factory = client_with_db()
+
+    response = client.get("/admin", headers=auth_header())
+
+    assert response.status_code == 200
+    assert 'name="mail_domain"' in response.text
+    assert '<option value="aiprot.space"' in response.text
+    assert '<option value="ssn.aiprot.space"' in response.text
+    assert '<option value="sso.aiprot.space"' in response.text
+    assert '<option value="wow.aiprot.space"' in response.text
+    assert '<option value="oai.aiprot.space"' in response.text
+    assert '<option value="why.aiprot.space"' in response.text
+    assert '<option value="a.exa.aiprot.space"' in response.text
+    assert '<option value="b.exa.aiprot.space"' in response.text
+
+
+def test_admin_bulk_generates_aliases_for_selected_subdomain():
+    client, session_factory = client_with_db()
+    form = client.get("/admin", headers=auth_header())
+    csrf_token = csrf_token_from(form.text)
+
+    response = client.post(
+        "/admin/aliases/bulk",
+        data={
+            "count": "1",
+            "length": "8",
+            "mail_domain": "ssn.aiprot.space",
+            "csrf_token": csrf_token,
+        },
+        headers=auth_header(),
+    )
+
+    assert response.status_code == 200
+    match = re.search(
+        r"([a-z0-9]{8})@ssn\.aiprot\.space https://aiprot\.space/api/inbox/([a-z0-9]{8}--ssn-aiprot-space)/latest\.txt\?token=([A-Za-z0-9_-]+)",
+        response.text,
+    )
+    assert match is not None
+    local_part, route_key, token = match.groups()
+    assert route_key == f"{local_part}--ssn-aiprot-space"
+    with session_factory() as db:
+        alias = db.query(Alias).filter_by(email=f"{local_part}@ssn.aiprot.space").one()
+        assert alias.prefix == route_key
+    client.post(
+        "/internal/ingest",
+        content=RAW,
+        headers={
+            "X-Envelope-Recipient": f"{local_part}@ssn.aiprot.space",
+            "X-Ingest-Token": "ingest-secret",
+        },
+    )
+    latest = client.get(f"/api/inbox/{route_key}/latest.txt?token={token}")
+    assert latest.status_code == 200
+    assert f"To: {local_part}@ssn.aiprot.space" in latest.text
+
+
+def test_admin_bulk_generates_aliases_for_registered_exa_subdomain():
+    client, session_factory = client_with_db()
+    form = client.get("/admin", headers=auth_header())
+    csrf_token = csrf_token_from(form.text)
+
+    response = client.post(
+        "/admin/aliases/bulk",
+        data={
+            "count": "1",
+            "length": "8",
+            "mail_domain": "a.exa.aiprot.space",
+            "csrf_token": csrf_token,
+        },
+        headers=auth_header(),
+    )
+
+    assert response.status_code == 200
+    match = re.search(
+        r"([a-z0-9]{8})@a\.exa\.aiprot\.space https://aiprot\.space/api/inbox/([a-z0-9]{8}--a-exa-aiprot-space)/latest\.txt\?token=([A-Za-z0-9_-]+)",
+        response.text,
+    )
+    assert match is not None
+    local_part, route_key, token = match.groups()
+    assert route_key == f"{local_part}--a-exa-aiprot-space"
+    with session_factory() as db:
+        alias = db.query(Alias).filter_by(email=f"{local_part}@a.exa.aiprot.space").one()
+        assert alias.prefix == route_key
+    client.post(
+        "/internal/ingest",
+        content=RAW,
+        headers={
+            "X-Envelope-Recipient": f"{local_part}@a.exa.aiprot.space",
+            "X-Ingest-Token": "ingest-secret",
+        },
+    )
+    latest = client.get(f"/api/inbox/{route_key}/latest.txt?token={token}")
+    assert latest.status_code == 200
+    assert f"To: {local_part}@a.exa.aiprot.space" in latest.text
+
+
+def test_admin_aliases_can_filter_by_mail_domain():
+    client, session_factory = client_with_db()
+    with session_factory() as db:
+        create_alias(
+            db,
+            "alpha--a-exa-aiprot-space",
+            "a.exa.aiprot.space",
+            email="alpha@a.exa.aiprot.space",
+        )
+        create_alias(
+            db,
+            "beta--b-exa-aiprot-space",
+            "b.exa.aiprot.space",
+            email="beta@b.exa.aiprot.space",
+        )
+
+    response = client.get("/admin?mail_domain=a.exa.aiprot.space", headers=auth_header())
+
+    assert response.status_code == 200
+    assert "alpha@a.exa.aiprot.space" in response.text
+    assert "beta@b.exa.aiprot.space" not in response.text
+    assert 'name="mail_domain_filter"' in response.text
+    assert '<option value="a.exa.aiprot.space" selected' in response.text
+
+
+def test_admin_can_register_exa_subdomain_from_ui_and_use_it_for_generation():
+    client, session_factory = client_with_db()
+    form = client.get("/admin/subdomains", headers=auth_header())
+    csrf_token = csrf_token_from(form.text)
+
+    response = client.post(
+        "/admin/subdomains",
+        data={"csrf_token": csrf_token, "subdomain": "c"},
+        headers=auth_header(),
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    admin = client.get("/admin", headers=auth_header())
+    assert '<option value="c.exa.aiprot.space">c.exa.aiprot.space</option>' in admin.text
+    csrf_token = csrf_token_from(admin.text)
+    generated = client.post(
+        "/admin/aliases/bulk",
+        data={
+            "count": "1",
+            "length": "8",
+            "mail_domain": "c.exa.aiprot.space",
+            "csrf_token": csrf_token,
+        },
+        headers=auth_header(),
+    )
+
+    assert generated.status_code == 200
+    match = re.search(
+        r"([a-z0-9]{8})@c\.exa\.aiprot\.space https://aiprot\.space/api/inbox/([a-z0-9]{8}--c-exa-aiprot-space)/latest\.txt\?token=([A-Za-z0-9_-]+)",
+        generated.text,
+    )
+    assert match is not None
+    local_part, route_key, token = match.groups()
+    client.post(
+        "/internal/ingest",
+        content=RAW,
+        headers={
+            "X-Envelope-Recipient": f"{local_part}@c.exa.aiprot.space",
+            "X-Ingest-Token": "ingest-secret",
+        },
+    )
+    latest = client.get(f"/api/inbox/{route_key}/latest.txt?token={token}")
+    assert latest.status_code == 200
+    assert f"To: {local_part}@c.exa.aiprot.space" in latest.text
+    with session_factory() as db:
+        alias = db.query(Alias).filter_by(email=f"{local_part}@c.exa.aiprot.space").one()
+        assert alias.prefix == route_key
+
+
+def test_admin_rejects_invalid_registered_exa_subdomain_names():
+    client, _session_factory = client_with_db()
+    form = client.get("/admin/subdomains", headers=auth_header())
+    csrf_token = csrf_token_from(form.text)
+
+    response = client.post(
+        "/admin/subdomains",
+        data={"csrf_token": csrf_token, "subdomain": "bad/name"},
+        headers=auth_header(),
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "invalid subdomain"
+
+
+def test_admin_refuses_to_delete_registered_exa_subdomain_with_aliases():
+    client, session_factory = client_with_db()
+    form = client.get("/admin/subdomains", headers=auth_header())
+    csrf_token = csrf_token_from(form.text)
+    client.post(
+        "/admin/subdomains",
+        data={"csrf_token": csrf_token, "subdomain": "c"},
+        headers=auth_header(),
+        follow_redirects=False,
+    )
+    with session_factory() as db:
+        create_alias(
+            db,
+            "alpha--c-exa-aiprot-space",
+            "c.exa.aiprot.space",
+            email="alpha@c.exa.aiprot.space",
+        )
+    form = client.get("/admin/subdomains", headers=auth_header())
+    csrf_token = csrf_token_from(form.text)
+    with session_factory() as db:
+        subdomain_id = db.query(RegisteredSubdomain).filter_by(domain="c.exa.aiprot.space").one().id
+
+    response = client.post(
+        f"/admin/subdomains/{subdomain_id}/delete",
+        data={"csrf_token": csrf_token},
+        headers=auth_header(),
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "subdomain has aliases"
+
+
+def test_admin_bulk_rejects_unconfigured_mail_suffix():
+    client, _session_factory = client_with_db()
+    form = client.get("/admin", headers=auth_header())
+    csrf_token = csrf_token_from(form.text)
+
+    response = client.post(
+        "/admin/aliases/bulk",
+        data={
+            "count": "1",
+            "length": "8",
+            "mail_domain": "evil.example",
+            "csrf_token": csrf_token,
+        },
+        headers=auth_header(),
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "unsupported mail domain"
 
 
 def test_admin_can_rotate_existing_alias_token_and_show_new_api_link():
@@ -246,6 +486,152 @@ def test_admin_export_requires_selection_or_all_scope():
 
     assert response.status_code == 400
     assert response.json()["detail"] == "select aliases or export all"
+
+
+def test_unassigned_page_offers_register_and_import_action():
+    client, _session_factory = client_with_db()
+    client.post(
+        "/internal/ingest",
+        content=RAW,
+        headers={
+            "X-Envelope-Recipient": "unreg@aiprot.space",
+            "X-Ingest-Token": "ingest-secret",
+        },
+    )
+
+    response = client.get("/admin/unassigned", headers=auth_header())
+
+    assert response.status_code == 200
+    assert "unreg@aiprot.space" in response.text
+    assert "登记并导入" in response.text
+    assert "/admin/unassigned/" in response.text
+    assert "/register-import" in response.text
+
+
+def test_admin_registers_unassigned_message_and_imports_manager_inbox():
+    client, session_factory = client_with_db()
+    client.post(
+        "/internal/ingest",
+        content=RAW,
+        headers={
+            "X-Envelope-Recipient": "unreg@aiprot.space",
+            "X-Ingest-Token": "ingest-secret",
+        },
+    )
+    with session_factory() as db:
+        unassigned_id = db.query(UnassignedMessage).filter_by(recipient="unreg@aiprot.space").one().id
+    form = client.get("/admin/unassigned", headers=auth_header())
+    csrf_token = csrf_token_from(form.text)
+
+    response = client.post(
+        f"/admin/unassigned/{unassigned_id}/register-import",
+        data={"csrf_token": csrf_token},
+        headers=auth_header(),
+    )
+
+    assert response.status_code == 200
+    assert "收件管理器" in response.text
+    assert "unreg@aiprot.space" in response.text
+    assert "已登记并导入 unreg@aiprot.space" in response.text
+    with session_factory() as db:
+        alias = db.query(Alias).filter_by(prefix="unreg").one()
+        managed = db.query(ManagedInbox).filter_by(email="unreg@aiprot.space").one()
+        assert alias.enabled is True
+        assert alias.deleted_at is None
+        assert alias.message_count == 1
+        assert db.query(Message).filter_by(alias_id=alias.id).count() == 1
+        assert db.query(UnassignedMessage).filter_by(recipient="unreg@aiprot.space").count() == 0
+        assert managed.status == "pending"
+        assert managed.api_url.startswith("https://aiprot.space/api/inbox/unreg/latest.txt?token=")
+
+    parsed = urlparse(managed.api_url)
+    latest = client.get(f"{parsed.path}?{parsed.query}")
+    assert latest.status_code == 200
+    assert "Hello" in latest.text
+    assert "Body" in latest.text
+
+
+def test_admin_registers_unassigned_subdomain_message_with_route_key():
+    from fastapi.testclient import TestClient
+    from sqlalchemy.pool import StaticPool
+
+    from maildrop.app import create_app
+    from maildrop.config import Settings
+    from maildrop.db import create_engine_from_url, create_schema, make_session_factory
+
+    engine = create_engine_from_url(
+        "sqlite+pysqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    create_schema(engine)
+    session_factory = make_session_factory(engine)
+    app = create_app(
+        Settings(
+            app_base_url="https://aiprot.space",
+            mail_domain="aiprot.space",
+            mail_domains="aiprot.space,ssn.aiprot.space",
+            database_url="sqlite+pysqlite:///:memory:",
+            admin_username="admin",
+            admin_password="admin-secret",
+            ingest_token="ingest-secret",
+        ),
+        session_factory=session_factory,
+    )
+    client = TestClient(app, base_url="https://testserver")
+    client.post(
+        "/internal/ingest",
+        content=RAW,
+        headers={
+            "X-Envelope-Recipient": "alpha@ssn.aiprot.space",
+            "X-Ingest-Token": "ingest-secret",
+        },
+    )
+    with session_factory() as db:
+        unassigned_id = db.query(UnassignedMessage).filter_by(recipient="alpha@ssn.aiprot.space").one().id
+    form = client.get("/admin/unassigned", headers=auth_header())
+    csrf_token = csrf_token_from(form.text)
+
+    response = client.post(
+        f"/admin/unassigned/{unassigned_id}/register-import",
+        data={"csrf_token": csrf_token},
+        headers=auth_header(),
+    )
+
+    assert response.status_code == 200
+    with session_factory() as db:
+        alias = db.query(Alias).filter_by(email="alpha@ssn.aiprot.space").one()
+        managed = db.query(ManagedInbox).filter_by(email="alpha@ssn.aiprot.space").one()
+        assert alias.prefix == "alpha--ssn-aiprot-space"
+        assert managed.api_url.startswith(
+            "https://aiprot.space/api/inbox/alpha--ssn-aiprot-space/latest.txt?token="
+        )
+
+    parsed = urlparse(managed.api_url)
+    latest = client.get(f"{parsed.path}?{parsed.query}")
+    assert latest.status_code == 200
+    assert "To: alpha@ssn.aiprot.space" in latest.text
+
+
+def test_register_unassigned_requires_csrf():
+    client, session_factory = client_with_db()
+    client.post(
+        "/internal/ingest",
+        content=RAW,
+        headers={
+            "X-Envelope-Recipient": "csrfcase@aiprot.space",
+            "X-Ingest-Token": "ingest-secret",
+        },
+    )
+    with session_factory() as db:
+        unassigned_id = db.query(UnassignedMessage).filter_by(recipient="csrfcase@aiprot.space").one().id
+
+    response = client.post(
+        f"/admin/unassigned/{unassigned_id}/register-import",
+        headers=auth_header(),
+    )
+
+    assert response.status_code == 403
 
 
 def test_admin_category_filters_aliases_by_export_and_delete_state():

@@ -1,10 +1,9 @@
 # Maildrop 轻量收信服务
 
-这个目录是自研 Maildrop 轻量收信服务。当前生产环境已部署在服务器 `167.71.29.22`，用于接收 `aiprot.space` 的 catch-all 邮件，并按邮箱前缀提供中文管理后台和 tokenized API 链接。
+Maildrop 是一个轻量自托管收信服务，用 Postfix 接收 catch-all 邮件，用 FastAPI 提供中文管理后台和 tokenized API 链接。它适合把大量临时邮箱集中管理，并把每个邮箱导出为可直接访问最新邮件的 API 链接。
 
-## 当前目标
+## 功能
 
-- 域名：`aiprot.space`
 - SMTP 接收：宿主机 Postfix。
 - 应用：Python 3.12 + FastAPI。
 - 数据库：PostgreSQL 16。
@@ -14,7 +13,9 @@
 - 未登记前缀：进入“未登记邮件”列表，不自动创建 alias。
 - 管理分类：后台按 `未导出`、`已导出`、`已删除` 管理邮箱别名。
 - 收件管理器：`/xxxmailmanage` 可导入邮箱和 API 链接，并标记 `待消耗`、`已消耗`、`错误`。
-- 当前生产状态：DNS 已切到 `mail.aiprot.space`，Postfix/Caddy/Maildrop 已通过生产检查和公网真实收信 smoke。
+- 子域名管理：后台可登记 `*.exa.<domain>` 风格的子域名后缀，并分别批量生成和管理。
+
+当前仓库中的生产示例使用 `aiprot.space`。如果部署到别的域名，请按 `docs/deploy-from-scratch.md` 替换域名和 IP。
 
 ## Maildrop 文件
 
@@ -24,6 +25,8 @@
 - `Dockerfile`：FastAPI 应用镜像。
 - `docker-compose.maildrop.yml`：Maildrop + PostgreSQL 部署。
 - `.env.maildrop.example`：可提交的 Maildrop 环境变量模板。
+- `docs/deploy-from-scratch.md`：给新服务器/新域名使用的通用部署指南。
+- `docs/maildrop-ops.md`：当前生产运维、备份、清理和验收说明。
 - `MAILDROP_MAIN.md`：当前状态、架构决策和推进记录。
 - `docs/superpowers/plans/2026-06-12-lightweight-mail-api.md`：主实施计划。
 
@@ -113,19 +116,19 @@ user002@aiprot.space----https://aiprot.space/api/inbox/user002/latest.txt?token=
 
 生产 Docker 启动已关闭 Uvicorn access log，避免 query token 写入应用访问日志。
 
-## 服务器部署
+## 从零部署
 
-```bash
-rsync -av --exclude .git --exclude .venv --exclude .pytest_cache ./ root@167.71.29.22:/opt/maildrop/
-ssh root@167.71.29.22 'cd /opt/maildrop && cp .env.maildrop.example .env.maildrop'
-ssh root@167.71.29.22 'cd /opt/maildrop && $EDITOR .env.maildrop'
-ssh root@167.71.29.22 'cd /opt/maildrop && docker compose -f docker-compose.maildrop.yml build app'
-ssh root@167.71.29.22 'cd /opt/maildrop && docker compose -f docker-compose.maildrop.yml run --rm app alembic upgrade head'
-ssh root@167.71.29.22 'cd /opt/maildrop && docker compose -f docker-compose.maildrop.yml up -d app'
-ssh root@167.71.29.22 'cd /opt/maildrop && docker compose -f docker-compose.maildrop.yml ps'
-```
+见 `docs/deploy-from-scratch.md`。核心流程是：
 
-Postfix、Caddy、DNS、生产验收、备份和清理策略见 `docs/maildrop-ops.md`。
+1. 配置 DNS：`mail.<domain>` A 记录、根域 MX、SPF、DMARC。
+2. 复制 `.env.maildrop.example` 为 `.env.maildrop` 并填入域名、数据库密码、后台密码和 ingest token。
+3. 用 Docker Compose 启动 PostgreSQL 和 FastAPI app。
+4. 运行 Alembic 迁移。
+5. 配置 Postfix pipe 到 `/internal/ingest`。
+6. 配置 Caddy 反代并屏蔽 `/internal/*`。
+7. 登录 `/admin` 批量生成邮箱，向邮箱投递邮件并打开 API 链接验收。
+
+当前 `deploy/postfix/*` 和 `deploy/caddy/Caddyfile.maildrop` 仍以 `aiprot.space` 为模板示例；部署到其他域名时需要替换。
 
 ## EmailEngine 历史配置
 

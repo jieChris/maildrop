@@ -109,3 +109,12 @@ class ManagedInbox(Base):
         default=utcnow,
         onupdate=utcnow,
     )
+
+
+class RegisteredSubdomain(Base):
+    __tablename__ = "registered_subdomains"
+    __table_args__ = (UniqueConstraint("domain", name="uq_registered_subdomains_domain"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    domain: Mapped[str] = mapped_column(String(320), nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)

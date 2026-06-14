@@ -6,16 +6,24 @@
 
 核心要求：
 
-- 域名：`aiprot.space`
+- 主域名：`aiprot.space`
+- 已配置收件域名：`aiprot.space`、`ssn.aiprot.space`、`sso.aiprot.space`、`wow.aiprot.space`、`oai.aiprot.space`、`why.aiprot.space`
+- 登记式 exa 子域名：配置文件可预置 `MAIL_REGISTERED_SUBDOMAINS`，后台 `/admin/subdomains` 可继续新增，例如 `c.exa.aiprot.space`。
 - 只收信，不发信/回复。
 - MX 解析到自有服务器，由 Postfix 接收 catch-all 邮件。
 - 已登记邮箱前缀进入对应收件箱。
 - 未登记邮箱前缀进入“未登记邮件”列表，不自动创建别名。
-- 管理后台支持批量生成随机邮箱前缀和对应 API 链接。
+- 管理后台支持批量生成随机邮箱前缀和对应 API 链接，并可选择邮箱后缀。
+- 管理后台支持按邮箱后缀筛选，便于分别管理不同子域名邮箱。
 - 管理后台支持选择邮箱或全量导出邮箱及对应 API 链接；由于明文 token 不落库，导出会为相关邮箱轮换 token，旧链接立即失效。
 - 管理后台支持按 `未导出`、`已导出`、`已删除` 分类管理邮箱；删除为软删除，历史邮件保留。
 - 收件管理器 `/xxxmailmanage` 支持导入邮箱和 API 链接，并标记 `待消耗`、`已消耗`、`错误`。
+- 收件管理器 `/xxxmailmanage` 支持逐条展开/收起最新内容，并从最新内容中提取验证码，验证码按钮可单击复制。
+- 收件管理器 `/xxxmailmanage` 的单行“查看最新”、“保存状态”、“删除”支持无刷新操作；普通表单提交保留为降级路径。
+- 收件管理器 `/xxxmailmanage` 主行优先显示验证码；API 链接放在展开详情中并保留复制按钮。
+- 未登记邮件列表支持一键“登记并导入”：为收件人创建/恢复 alias、生成 API 链接、迁移已收到的未登记邮件，并写入 `/xxxmailmanage`。
 - 每个邮箱有独立 tokenized API，可直接访问最新邮件无格式文本。
+- 子域名邮箱会按完整邮箱地址匹配 alias；API route key 对子域名使用 `local--domain-with-dashes` 形式，避免不同域名同 local part 串信。
 - 系统需要能维护 1000+ 邮箱前缀。
 
 ## 当前架构决策
@@ -77,6 +85,13 @@
 - 已新增并部署后台导出功能：可勾选邮箱导出，或一键导出全部邮箱；导出格式为 `email latest.txt-url`，导出时为相关 alias 轮换 token，旧链接立即失效。
 - 已新增并部署后台分类和软删除功能：`未导出`、`已导出`、`已删除` 分类，导出记录 `exported_at`，删除记录 `deleted_at` 并禁用 alias。
 - 已新增并部署收件管理器 `/xxxmailmanage`：批量导入邮箱和 API 链接，按 `待消耗`、`已消耗`、`错误` 管理，并可服务端拉取最新纯文本邮件预览。
+- `/xxxmailmanage` 已新增逐条展开/收起最新内容、验证码提取和验证码单击复制能力；当前实现不需要数据库迁移。
+- `/xxxmailmanage` 单行操作已改为 JSON + fetch 局部更新，避免查看最新、保存状态、删除时整页刷新；当前实现不需要数据库迁移。
+- `/xxxmailmanage` 已把列表主行的 API 链接列改为验证码列，API 链接移动到展开详情内；无刷新“查看最新”会同步更新主行验证码。
+- `/admin/unassigned` 已新增“登记并导入”操作：可把未登记收件人纳入正式 alias 和 `/xxxmailmanage`，并把该收件人已有未登记邮件迁移为正式消息，避免导入后 API 仍查不到旧邮件。
+- 应用和 Postfix 已配置接受 `ssn.aiprot.space`、`sso.aiprot.space`、`wow.aiprot.space`、`oai.aiprot.space`、`why.aiprot.space`；服务器本机 SMTP 验证已通过。公网 DNS 仍需在 Spaceship 增加这些子域名的 MX/TXT 记录后，外部邮件才能投递。
+- 后台 `/admin` 的“批量生成”表单已支持选择邮箱后缀；子域名邮箱的 API route key 使用 `local--domain-with-dashes`。
+- 后台 `/admin/subdomains` 支持登记式 `exa` 子域名管理；Postfix 一次性放行单级 `*.exa.aiprot.space` 到应用，应用只允许已登记后缀出现在生成/管理中，未登记后缀进入未登记列表并标记 `domain_not_allowed`。
 
 ## 执行记录
 
@@ -107,6 +122,14 @@
 - 2026-06-12：导出功能已部署到服务器 `/opt/maildrop` 并完成生产验收。针对本地 UDP DNS 到 `1.1.1.1` 超时导致验收误报的问题，生产检查脚本新增 DNS TCP 回退并补充回归测试；本地 `.venv/bin/python -m pytest tests/maildrop -q` 通过 54 个测试，`scripts/maildrop-production-check.sh aiprot.space emailengine 167.71.29.22` 返回 exit `0`，`scripts/maildrop-public-smoke.py aiprot.space emailengine 167.71.29.22` 返回 exit `0`，测试邮件 `public-smoke-1781239240-2764ab6b@aiprot.space` 已确认进入 `unassigned_messages`。
 - 2026-06-12：根据用户新增需求实现并部署 alias 分类和软删除。已确认删除语义为软删除、保留历史邮件、暂不做恢复按钮；新增设计规格 `docs/superpowers/specs/2026-06-12-maildrop-alias-categories-delete-design.md` 和实施计划 `docs/superpowers/plans/2026-06-12-maildrop-alias-categories-delete.md`。实现 Alembic 基础配置、`exported_at`/`deleted_at` nullable 迁移、导出状态记录、分类过滤、单个/批量软删除、删除后收信进入未登记邮件 `alias_deleted`。修复 Dockerfile 未复制 Alembic 文件导致容器内迁移失败的问题，并为生产检查/公网 smoke 增加服务器侧 SMTP fallback。本地 `.venv/bin/python -m pytest tests/maildrop -q` 通过 64 个测试；服务器已 `docker compose build app`、`alembic upgrade head`、重启 app 并 healthy；`scripts/maildrop-production-check.sh aiprot.space emailengine 167.71.29.22` 返回 exit `0`，`scripts/maildrop-public-smoke.py aiprot.space emailengine 167.71.29.22` 返回 exit `0`，测试邮件 `public-smoke-1781258315-4d3046ac@aiprot.space` 已确认进入 `unassigned_messages`；生产 HTTPS 后台软删除 smoke 创建并删除 `deletesmoke1781258395@aiprot.space`，确认 `deleted=True`、`enabled=False`。
 - 2026-06-12：根据用户提供的 `outlook邮箱管理.html` 模板实现并部署 `/xxxmailmanage` 收件管理器。新增规格 `docs/superpowers/specs/2026-06-12-xxxmailmanage-inbox-manager-design.md` 和计划 `docs/superpowers/plans/2026-06-12-xxxmailmanage-inbox-manager.md`。新增 `ManagedInbox` 模型、`20260612_0002_create_managed_inboxes` 迁移、`maildrop.manager` 解析/仓储模块、`/xxxmailmanage` 受保护路由、模板和紫蓝渐变样式；导入支持空格、`----`、Tab、逗号分隔，重复邮箱更新链接但保留状态和备注。本地 `.venv/bin/python -m pytest tests/maildrop -q` 通过 79 个测试；服务器已 `docker compose build app`、`alembic upgrade head`、重启 app 并 healthy；`scripts/maildrop-production-check.sh aiprot.space emailengine 167.71.29.22` 返回 exit `0`；生产 HTTPS manager smoke 导入 `managesmoke1781265819@aiprot.space` 并标记 `used` 成功；`scripts/maildrop-public-smoke.py aiprot.space emailengine 167.71.29.22` 返回 exit `0`，测试邮件 `public-smoke-1781265874-77509bc7@aiprot.space` 已确认进入 `unassigned_messages`。
+- 2026-06-13：根据用户新增需求为 `/xxxmailmanage` 增加逐条展开/收起最新内容、验证码提取和验证码单击复制。新增 `extract_verification_codes()`，优先提取验证码关键词附近的 4-8 位数字，并避免把 Received 时间戳/日期误识别为验证码；模板中最新内容默认收起，展开后显示验证码按钮和原始纯文本。本地 `.venv/bin/python -m pytest tests/maildrop -q` 通过 82 个测试。
+- 2026-06-13：根据用户反馈将 `/xxxmailmanage` 单行“查看最新”、“保存状态”、“删除”改为无刷新交互。新增 `status.json`、`refresh.json`、`delete.json` 接口，前端用 `fetch()` 局部更新当前行、验证码、错误、状态标签和统计计数，同时保留原 HTML 表单 action 作为降级路径。
+- 2026-06-13：根据用户反馈调整 `/xxxmailmanage` 列表布局：主行原 API 链接位置改为显示收到的验证码按钮，验证码可单击复制；API 链接移动到展开详情中的 `API链接` 区域并保留复制按钮；无刷新刷新邮件后会同时更新详情和主行验证码。
+- 2026-06-13：根据用户反馈为 `/admin/unassigned` 增加“登记并导入”。新增 `POST /admin/unassigned/{message_id}/register-import`，使用 CSRF 和 Basic Auth；执行时会创建或恢复 alias、轮换/生成 tokenized API 链接、把同一收件人的未登记邮件迁移到 `messages`，并创建或更新 `managed_inboxes` 记录。导入后直接返回收件管理器筛选到该邮箱。本地 `.venv/bin/python -m pytest tests/maildrop -q` 通过 88 个测试。
+- 2026-06-14：为 `ssn.aiprot.space`、`sso.aiprot.space`、`wow.aiprot.space`、`oai.aiprot.space`、`why.aiprot.space` 增加服务器侧收件支持。新增 `MAIL_DOMAINS` 配置解析，ingest 按完整邮箱地址匹配 alias；子域名未登记导入会生成唯一 API route key，例如 `local--ssn-aiprot-space`。服务器 `/opt/maildrop/.env.maildrop` 已更新，Postfix `virtual_mailbox_domains` 和 `/etc/postfix/virtual_mailbox_regexp` 已更新并 reload。本地 `.venv/bin/python -m pytest tests/maildrop -q` 通过 94 个测试；服务器本机 SMTP 向 5 个子域名投递均进入 `unassigned_messages`；`ssn.aiprot.space` 未登记导入 smoke 通过；`scripts/maildrop-production-check.sh aiprot.space emailengine 167.71.29.22` 返回 exit `0`。公网 DNS 查询显示 5 个子域名 MX/TXT 仍为空，需在 Spaceship 添加记录。
+- 2026-06-14：后台批量生成邮箱增加“邮箱后缀”下拉框，选项来自 `MAIL_DOMAINS`。选择子域名时生成真实邮箱如 `local@ssn.aiprot.space`，API 链接使用 route key 如 `/api/inbox/local--ssn-aiprot-space/latest.txt?token=...`，避免不同后缀同前缀串信；非法后缀返回 400。本地 `.venv/bin/python -m pytest tests/maildrop -q` 通过 97 个测试。
+- 2026-06-14：实现并部署登记式 `exa` 子域名管理。新增 `MAIL_REGISTERED_SUBDOMAINS`，当前生产登记 `a.exa.aiprot.space,b.exa.aiprot.space`；后台批量生成下拉显示登记后缀，alias 列表可按邮箱后缀筛选。Postfix `virtual_mailbox_domains` 和 `/etc/postfix/virtual_mailbox_regexp` 已同步登记后缀；公网 RCPT 验证 `a.exa`、`b.exa` 返回 250，未登记 `c.exa` 返回 554。本地 `.venv/bin/python -m pytest tests/maildrop -q` 通过 102 个测试；生产 `scripts/maildrop-production-check.sh aiprot.space emailengine 167.71.29.22` 返回 exit `0`；线上 smoke 已生成 `@a.exa.aiprot.space`、验证筛选、SMTP 投递和 API 读取成功。
+- 2026-06-14：实现并部署后台 `/admin/subdomains` 子域名管理。新增 `registered_subdomains` 表和 Alembic 迁移 `20260614_0003`；后台可输入 `c` 自动登记为 `c.exa.aiprot.space`，登记后批量生成下拉立即出现该后缀，删除只允许后台新增且无邮箱的记录。Postfix 改为 `virtual_mailbox_domains = regexp:/etc/postfix/virtual_mailbox_domains_regexp`，一次性放行单级 `*.exa.aiprot.space` 给应用；应用数据库决定哪些后缀可生成/分配。本地 `.venv/bin/python -m pytest tests/maildrop -q` 通过 107 个测试；生产迁移、重启和 `scripts/maildrop-production-check.sh aiprot.space emailengine 167.71.29.22` 均通过；线上 smoke 已通过后台新增 `c.exa.aiprot.space`、生成邮箱、SMTP 投递和 API 读取；未登记 `d.exa.aiprot.space` 投递进入 `unassigned_messages` 且 reason 为 `domain_not_allowed`。
 
 ## 下次推进检查清单
 

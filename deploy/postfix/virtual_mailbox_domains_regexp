@@ -1,0 +1,3 @@
+/^aiprot\.space$/ OK
+/^(ssn|sso|wow|oai|why)\.aiprot\.space$/ OK
+/^[a-z0-9-]+\.exa\.aiprot\.space$/ OK

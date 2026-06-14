@@ -1,3 +1,4 @@
+from collections.abc import Iterable
 from datetime import datetime, timedelta, timezone
 import secrets
 import string
@@ -23,6 +24,7 @@ def create_alias(
     prefix: str,
     domain: str,
     note: str = "",
+    email: str | None = None,
     commit: bool = True,
 ) -> tuple[Alias, str]:
     clean_prefix = prefix.strip().lower()
@@ -37,7 +39,7 @@ def create_alias(
     token = new_token()
     alias = Alias(
         prefix=clean_prefix,
-        email=f"{clean_prefix}@{clean_domain}",
+        email=(email.strip().lower() if email is not None else f"{clean_prefix}@{clean_domain}"),
         api_token_hash=hash_token(token),
         enabled=True,
         note=note,
@@ -84,6 +86,20 @@ def find_alias_by_prefix(db: Session, prefix: str) -> Alias | None:
     ).scalar_one_or_none()
 
 
+def find_alias_by_email(db: Session, email: str) -> Alias | None:
+    return db.execute(
+        select(Alias).where(Alias.email == normalize_recipient(email))
+    ).scalar_one_or_none()
+
+
+def accepted_domain_set(expected_domain: str | Iterable[str]) -> set[str]:
+    if isinstance(expected_domain, str):
+        domains = [expected_domain]
+    else:
+        domains = list(expected_domain)
+    return {domain.strip().lower() for domain in domains if domain.strip()}
+
+
 def _store_unassigned(db: Session, parsed: ParsedMessage, recipient: str, reason: str) -> None:
     db.add(
         UnassignedMessage(
@@ -102,17 +118,17 @@ def _store_unassigned(db: Session, parsed: ParsedMessage, recipient: str, reason
 def ingest_parsed_message(
     db: Session,
     parsed: ParsedMessage,
-    expected_domain: str,
+    expected_domain: str | Iterable[str],
 ) -> str:
     recipient = normalize_recipient(parsed.recipient)
     prefix, domain = recipient.rsplit("@", 1)
 
-    if domain != expected_domain.strip().lower():
+    if domain not in accepted_domain_set(expected_domain):
         _store_unassigned(db, parsed, recipient, "domain_not_allowed")
         db.commit()
         return "unassigned"
 
-    alias = find_alias_by_prefix(db, prefix)
+    alias = find_alias_by_email(db, recipient)
     if alias is None:
         _store_unassigned(db, parsed, recipient, "alias_not_registered")
         db.commit()

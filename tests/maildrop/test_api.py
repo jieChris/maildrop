@@ -5,7 +5,7 @@ from sqlalchemy.pool import StaticPool
 from maildrop.app import create_app
 from maildrop.config import Settings
 from maildrop.db import create_engine_from_url, create_schema, make_session_factory
-from maildrop.models import UnassignedMessage
+from maildrop.models import RegisteredSubdomain, UnassignedMessage
 from maildrop.repository import create_alias
 
 
@@ -16,6 +16,8 @@ def settings() -> Settings:
     return Settings(
         app_base_url="https://aiprot.space",
         mail_domain="aiprot.space",
+        mail_domains="aiprot.space,ssn.aiprot.space,sso.aiprot.space,wow.aiprot.space,oai.aiprot.space,why.aiprot.space",
+        mail_registered_subdomains="a.exa.aiprot.space,b.exa.aiprot.space",
         database_url="sqlite+pysqlite:///:memory:",
         admin_username="admin",
         admin_password="admin-secret",
@@ -137,6 +139,128 @@ def test_latest_txt_requires_valid_token():
     assert response.status_code == 200
     assert "Subject: Hello" in response.text
     assert "Body" in response.text
+
+
+def test_internal_ingest_accepts_configured_subdomain_alias():
+    app_settings = settings().model_copy(
+        update={"mail_domains": "aiprot.space,ssn.aiprot.space"}
+    )
+    engine = create_engine_from_url(
+        "sqlite+pysqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    create_schema(engine)
+    session_factory = make_session_factory(engine)
+    app = create_app(app_settings, session_factory=session_factory)
+    client = TestClient(app, base_url="https://testserver")
+    with session_factory() as db:
+        _alias, token = create_alias(
+            db,
+            "alpha--ssn-aiprot-space",
+            "ssn.aiprot.space",
+            email="alpha@ssn.aiprot.space",
+        )
+
+    response = client.post(
+        "/internal/ingest",
+        content=RAW,
+        headers={
+            "X-Envelope-Recipient": "alpha@ssn.aiprot.space",
+            "X-Ingest-Token": "ingest-secret",
+        },
+    )
+
+    assert response.status_code == 202
+    assert response.json() == {"status": "assigned"}
+    latest = client.get(f"/api/inbox/alpha--ssn-aiprot-space/latest.txt?token={token}")
+    assert latest.status_code == 200
+    assert "To: alpha@ssn.aiprot.space" in latest.text
+
+
+def test_internal_ingest_accepts_registered_exa_subdomain_alias():
+    app_settings = settings().model_copy(
+        update={"mail_registered_subdomains": "a.exa.aiprot.space"}
+    )
+    engine = create_engine_from_url(
+        "sqlite+pysqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    create_schema(engine)
+    session_factory = make_session_factory(engine)
+    app = create_app(app_settings, session_factory=session_factory)
+    client = TestClient(app, base_url="https://testserver")
+    with session_factory() as db:
+        _alias, token = create_alias(
+            db,
+            "alpha--a-exa-aiprot-space",
+            "a.exa.aiprot.space",
+            email="alpha@a.exa.aiprot.space",
+        )
+
+    response = client.post(
+        "/internal/ingest",
+        content=RAW,
+        headers={
+            "X-Envelope-Recipient": "alpha@a.exa.aiprot.space",
+            "X-Ingest-Token": "ingest-secret",
+        },
+    )
+
+    assert response.status_code == 202
+    assert response.json() == {"status": "assigned"}
+    latest = client.get(f"/api/inbox/alpha--a-exa-aiprot-space/latest.txt?token={token}")
+    assert latest.status_code == 200
+    assert "To: alpha@a.exa.aiprot.space" in latest.text
+
+
+def test_internal_ingest_routes_unregistered_exa_subdomain_to_unassigned():
+    client, session_factory = client_with_db()
+
+    response = client.post(
+        "/internal/ingest",
+        content=RAW,
+        headers={
+            "X-Envelope-Recipient": "alpha@c.exa.aiprot.space",
+            "X-Ingest-Token": "ingest-secret",
+        },
+    )
+
+    assert response.status_code == 202
+    assert response.json() == {"status": "unassigned"}
+    with session_factory() as db:
+        unassigned = db.execute(select(UnassignedMessage)).scalar_one()
+    assert unassigned.recipient == "alpha@c.exa.aiprot.space"
+    assert unassigned.reason == "domain_not_allowed"
+
+
+def test_internal_ingest_accepts_database_registered_exa_subdomain_alias():
+    client, session_factory = client_with_db()
+    with session_factory() as db:
+        db.add(RegisteredSubdomain(domain="c.exa.aiprot.space"))
+        db.commit()
+        _alias, token = create_alias(
+            db,
+            "alpha--c-exa-aiprot-space",
+            "c.exa.aiprot.space",
+            email="alpha@c.exa.aiprot.space",
+        )
+
+    response = client.post(
+        "/internal/ingest",
+        content=RAW,
+        headers={
+            "X-Envelope-Recipient": "alpha@c.exa.aiprot.space",
+            "X-Ingest-Token": "ingest-secret",
+        },
+    )
+
+    assert response.status_code == 202
+    assert response.json() == {"status": "assigned"}
+    latest = client.get(f"/api/inbox/alpha--c-exa-aiprot-space/latest.txt?token={token}")
+    assert latest.status_code == 200
+    assert "To: alpha@c.exa.aiprot.space" in latest.text
 
 
 def test_internal_ingest_rejects_oversized_body():

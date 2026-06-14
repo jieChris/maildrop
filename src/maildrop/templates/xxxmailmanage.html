@@ -11,10 +11,10 @@
         <p>导入邮箱和 API 链接，按消耗状态管理收件入口</p>
       </div>
       <div class="manager-stats">
-        <span>全部 <b>{{ stats.total }}</b></span>
-        <span>待消耗 <b>{{ stats.pending }}</b></span>
-        <span>已消耗 <b>{{ stats.used }}</b></span>
-        <span>错误 <b>{{ stats.error }}</b></span>
+        <span>全部 <b data-stat="total">{{ stats.total }}</b></span>
+        <span>待消耗 <b data-stat="pending">{{ stats.pending }}</b></span>
+        <span>已消耗 <b data-stat="used">{{ stats.used }}</b></span>
+        <span>错误 <b data-stat="error">{{ stats.error }}</b></span>
       </div>
     </header>
 
@@ -56,18 +56,28 @@
 
       <div class="manager-results">
         {% for item in items %}
-        <article class="manager-row status-{{ item.status }}">
+        {% set codes = extract_verification_codes(item.last_preview or "") %}
+        <article class="manager-row status-{{ item.status }}" data-item-id="{{ item.id }}">
           <div class="manager-row-head">
             <input form="manager-bulk-form" type="checkbox" name="ids" value="{{ item.id }}" aria-label="选择 {{ item.email }}">
             <strong class="manager-email">{{ item.email }}</strong>
             <span class="manager-status">{{ status_label(item.status) }}</span>
-            <code class="manager-url">{{ item.api_url }}</code>
+            <div class="manager-code-slot">
+              {% if codes %}
+              {% for code in codes %}
+              <button class="code-chip" type="button" data-copy="{{ code }}">{{ code }}</button>
+              {% endfor %}
+              {% else %}
+              <span>暂无验证码</span>
+              {% endif %}
+            </div>
             <div class="manager-actions">
-              <form method="post" action="/xxxmailmanage/{{ item.id }}/refresh">
+              <form method="post" action="/xxxmailmanage/{{ item.id }}/refresh" data-async-action="refresh" data-async-url="/xxxmailmanage/{{ item.id }}/refresh.json">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                 <button type="submit">查看最新</button>
               </form>
-              <form method="post" action="/xxxmailmanage/{{ item.id }}/status">
+              <button type="button" data-toggle-detail="true" aria-expanded="false">展开</button>
+              <form method="post" action="/xxxmailmanage/{{ item.id }}/status" data-async-action="status" data-async-url="/xxxmailmanage/{{ item.id }}/status.json">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                 <select name="status">
                   <option value="pending" {{ "selected" if item.status == "pending" else "" }}>待消耗</option>
@@ -77,14 +87,18 @@
                 <button type="submit">保存</button>
               </form>
               <button type="button" data-copy="{{ item.email }}">复制邮箱</button>
-              <button type="button" data-copy="{{ item.api_url }}">复制链接</button>
-              <form method="post" action="/xxxmailmanage/{{ item.id }}/delete">
+              <form method="post" action="/xxxmailmanage/{{ item.id }}/delete" data-async-action="delete" data-async-url="/xxxmailmanage/{{ item.id }}/delete.json">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                 <button type="submit">删除</button>
               </form>
             </div>
           </div>
           <div class="manager-detail">
+            <div class="detail-label">API链接</div>
+            <div class="detail-api">
+              <code class="manager-api-url">{{ item.api_url }}</code>
+              <button type="button" data-copy="{{ item.api_url }}">复制链接</button>
+            </div>
             {% if item.last_preview %}
             <div class="detail-label">最新内容</div>
             <pre>{{ item.last_preview }}</pre>
@@ -92,6 +106,9 @@
             {% if item.last_error %}
             <div class="detail-label">错误</div>
             <pre class="error-content">{{ item.last_error }}</pre>
+            {% endif %}
+            {% if not item.last_preview and not item.last_error %}
+            <div class="detail-empty">暂无最新内容，点击“查看最新”后会显示在这里。</div>
             {% endif %}
             <div class="detail-label">最后检查</div>
             <span>{{ item.last_checked_at or "-" }}</span>
@@ -115,12 +132,135 @@
 </div>
 
 <script>
-document.querySelectorAll("[data-copy]").forEach((button) => {
-  button.addEventListener("click", async () => {
-    await navigator.clipboard.writeText(button.getAttribute("data-copy"));
-    button.textContent = "已复制";
-    setTimeout(() => { button.textContent = button.getAttribute("data-copy").includes("@") ? "复制邮箱" : "复制链接"; }, 900);
+document.querySelectorAll("[data-toggle-detail]").forEach((button) => {
+  button.addEventListener("click", () => {
+    const row = button.closest(".manager-row");
+    const isExpanded = row.classList.toggle("expanded");
+    button.textContent = isExpanded ? "收起" : "展开";
+    button.setAttribute("aria-expanded", String(isExpanded));
   });
 });
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+function bindCopyButtons(scope = document) {
+  scope.querySelectorAll("[data-copy]:not([data-copy-bound])").forEach((button) => {
+    button.dataset.copyBound = "true";
+    button.dataset.copyLabel = button.textContent;
+    button.addEventListener("click", async () => {
+      await navigator.clipboard.writeText(button.getAttribute("data-copy"));
+      button.textContent = "已复制";
+      button.classList.add("copied");
+      setTimeout(() => {
+        button.textContent = button.dataset.copyLabel;
+        button.classList.remove("copied");
+      }, 900);
+    });
+  });
+}
+
+function updateStats(stats) {
+  if (!stats) return;
+  Object.entries(stats).forEach(([key, value]) => {
+    const target = document.querySelector(`[data-stat="${key}"]`);
+    if (target) target.textContent = value;
+  });
+}
+
+function renderDetail(item) {
+  const apiBlock = `<div class="detail-label">API链接</div><div class="detail-api"><code class="manager-api-url">${escapeHtml(item.api_url)}</code><button type="button" data-copy="${escapeHtml(item.api_url)}">复制链接</button></div>`;
+  const previewBlock = item.last_preview
+    ? `<div class="detail-label">最新内容</div><pre>${escapeHtml(item.last_preview)}</pre>`
+    : "";
+  const errorBlock = item.last_error
+    ? `<div class="detail-label">错误</div><pre class="error-content">${escapeHtml(item.last_error)}</pre>`
+    : "";
+  const emptyBlock = !item.last_preview && !item.last_error
+    ? `<div class="detail-empty">暂无最新内容，点击“查看最新”后会显示在这里。</div>`
+    : "";
+  return `${apiBlock}${previewBlock}${errorBlock}${emptyBlock}<div class="detail-label">最后检查</div><span>${escapeHtml(item.last_checked_at || "-")}</span>`;
+}
+
+function renderCodeSlot(item) {
+  const codes = item.codes || [];
+  if (!codes.length) {
+    return "<span>暂无验证码</span>";
+  }
+  return codes.map((code) => (
+    `<button class="code-chip" type="button" data-copy="${escapeHtml(code)}">${escapeHtml(code)}</button>`
+  )).join("");
+}
+
+function applyItemUpdate(row, item, stats) {
+  row.classList.remove("status-pending", "status-used", "status-error");
+  row.classList.add(`status-${item.status}`);
+  row.querySelector(".manager-status").textContent = item.status_label;
+  const codeSlot = row.querySelector(".manager-code-slot");
+  if (codeSlot) {
+    codeSlot.innerHTML = renderCodeSlot(item);
+    bindCopyButtons(codeSlot);
+  }
+  const select = row.querySelector('form[data-async-action="status"] select[name="status"]');
+  if (select) select.value = item.status;
+  const detail = row.querySelector(".manager-detail");
+  detail.innerHTML = renderDetail(item);
+  row.classList.add("expanded");
+  const toggle = row.querySelector("[data-toggle-detail]");
+  if (toggle) {
+    toggle.textContent = "收起";
+    toggle.setAttribute("aria-expanded", "true");
+  }
+  bindCopyButtons(detail);
+  updateStats(stats);
+}
+
+function setFormBusy(form, busy) {
+  const button = form.querySelector('button[type="submit"]');
+  if (!button) return;
+  if (!button.dataset.originalLabel) {
+    button.dataset.originalLabel = button.textContent;
+  }
+  button.disabled = busy;
+  button.textContent = busy ? "处理中" : button.dataset.originalLabel;
+}
+
+document.querySelectorAll("[data-async-action]").forEach((form) => {
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const row = form.closest(".manager-row");
+    setFormBusy(form, true);
+    try {
+      const response = await fetch(form.dataset.asyncUrl, {
+        method: "POST",
+        body: new FormData(form),
+        credentials: "same-origin",
+        headers: { "Accept": "application/json" },
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const payload = await response.json();
+      if (form.dataset.asyncAction === "delete") {
+        row.remove();
+        updateStats(payload.stats);
+        return;
+      }
+      applyItemUpdate(row, payload.item, payload.stats);
+    } catch (error) {
+      const detail = row.querySelector(".manager-detail");
+      detail.innerHTML = `<div class="detail-label">错误</div><pre class="error-content">${escapeHtml(error.message)}</pre>`;
+      row.classList.add("expanded");
+    } finally {
+      setFormBusy(form, false);
+    }
+  });
+});
+
+bindCopyButtons();
 </script>
 {% endblock %}

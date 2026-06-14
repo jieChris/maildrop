@@ -108,6 +108,11 @@
   height: 32px;
 }
 
+.manager-card button:disabled {
+  cursor: wait;
+  opacity: 0.62;
+}
+
 .btn-primary {
   background: linear-gradient(135deg, #667eea, #764ba2);
 }
@@ -132,6 +137,7 @@
   border-left: 3px solid #ffc107;
   border-radius: 8px;
   background: #fff;
+  transition: opacity 0.16s ease, transform 0.16s ease;
 }
 
 .manager-row.status-used {
@@ -151,8 +157,22 @@
 }
 
 .manager-email,
-.manager-url {
+.manager-code-slot,
+.manager-api-url {
   overflow-wrap: anywhere;
+}
+
+.manager-code-slot {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-height: 32px;
+}
+
+.manager-code-slot span {
+  color: #94a3b8;
+  font-size: 12px;
 }
 
 .manager-status {
@@ -188,6 +208,10 @@
   padding: 10px 14px 14px;
 }
 
+.manager-row:not(.expanded) .manager-detail {
+  display: none;
+}
+
 .manager-detail pre {
   background: #f8f9fa;
   border: 1px solid #e9ecef;
@@ -200,6 +224,66 @@
 
 .manager-detail .error-content {
   color: #dc3545;
+}
+
+.detail-api {
+  align-items: center;
+  background: #f8f9fa;
+  border: 1px solid #e9ecef;
+  border-radius: 6px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 10px;
+}
+
+.manager-api-url {
+  flex: 1;
+  min-width: 240px;
+}
+
+.detail-label {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 700;
+  margin: 10px 0 6px;
+}
+
+.detail-empty {
+  color: #94a3b8;
+  padding: 8px 0;
+}
+
+.code-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.manager-card .code-chip {
+  background: #111827;
+  border: 1px solid #111827;
+  color: #fff;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 16px;
+  font-weight: 800;
+  height: 36px;
+  letter-spacing: 0;
+  min-width: 92px;
+  padding: 0 12px;
+}
+
+.manager-code-slot .code-chip {
+  font-size: 15px;
+  height: 32px;
+  min-width: 82px;
+}
+
+.manager-card .code-chip:hover,
+.manager-card .code-chip.copied {
+  background: #0f766e;
+  border-color: #0f766e;
 }
 
 .manager-empty {

@@ -10,6 +10,19 @@ from maildrop.models import ManagedInbox, utcnow
 
 VALID_MANAGER_STATUSES = {"pending", "used", "error"}
 PREVIEW_LIMIT = 20_000
+VERIFICATION_CODE_PATTERN = re.compile(r"(?<!\d)\d{4,8}(?!\d)")
+VERIFICATION_KEYWORDS = (
+    "验证码",
+    "校验码",
+    "动态码",
+    "临时验证码",
+    "verification code",
+    "verify code",
+    "security code",
+    "one-time code",
+    "one time code",
+    "otp",
+)
 
 
 @dataclass(frozen=True)
@@ -70,6 +83,49 @@ def parse_import_rows(text: str) -> ImportRows:
         seen.add(email)
         valid.append(ImportRow(email=email, api_url=api_url))
     return ImportRows(valid=valid, invalid_count=invalid_count)
+
+
+def extract_verification_codes(text: str) -> list[str]:
+    lines = text.splitlines()
+    codes: list[str] = []
+    seen: set[str] = set()
+
+    def add_matches(line: str) -> None:
+        for match in VERIFICATION_CODE_PATTERN.findall(line):
+            if match not in seen:
+                seen.add(match)
+                codes.append(match)
+
+    def has_keyword(line: str) -> bool:
+        lower_line = line.lower()
+        return any(keyword in lower_line for keyword in VERIFICATION_KEYWORDS)
+
+    for index, line in enumerate(lines):
+        clean = line.strip()
+        if not clean:
+            continue
+        if has_keyword(clean):
+            add_matches(clean)
+            for next_line in lines[index + 1 : index + 4]:
+                next_clean = next_line.strip()
+                if not next_clean:
+                    continue
+                if VERIFICATION_CODE_PATTERN.fullmatch(next_clean):
+                    add_matches(next_clean)
+                break
+        elif VERIFICATION_CODE_PATTERN.fullmatch(clean):
+            previous_lines = [item.strip() for item in lines[max(0, index - 3) : index]]
+            if any(has_keyword(previous_line) for previous_line in previous_lines):
+                add_matches(clean)
+
+    if codes:
+        return codes
+
+    for line in lines:
+        clean = line.strip()
+        if VERIFICATION_CODE_PATTERN.fullmatch(clean):
+            add_matches(clean)
+    return codes
 
 
 def import_managed_inboxes(db: Session, text: str) -> dict[str, int]:

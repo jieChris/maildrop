@@ -38,9 +38,21 @@ mail.aiprot.space.  A    167.71.29.22
 aiprot.space.       MX   10 mail.aiprot.space.
 aiprot.space.       TXT  "v=spf1 -all"
 _dmarc.aiprot.space TXT  "v=DMARC1; p=reject; sp=reject; adkim=s; aspf=s"
+*.exa.aiprot.space. MX   10 mail.aiprot.space.
+*.exa.aiprot.space. TXT  "v=spf1 -all"
+exa.aiprot.space.   MX   10 mail.aiprot.space.
+exa.aiprot.space.   TXT  "v=spf1 -all"
 ```
 
 Maildrop is receive-only. If `aiprot.space` later needs to send mail, replace the SPF and DMARC policy with records for the actual sending provider before sending production mail.
+
+Registered `exa` subdomains are controlled by the app, not by wildcard DNS
+alone. Postfix is configured once to pass single-level `*.exa.aiprot.space`
+recipients to Maildrop. Use `/admin/subdomains` to add names such as
+`c.exa.aiprot.space`; the new suffix immediately appears in the bulk generator.
+Unregistered names can reach the app through SMTP, but Maildrop keeps them out
+of normal alias generation and records them as unsupported unless the domain is
+registered in the app.
 
 ## API Tokens And Logs
 
@@ -149,10 +161,12 @@ while IFS= read -r line; do
 done < deploy/postfix/main.cf.maildrop
 ```
 
-Create the catch-all recipient map:
+Create the virtual domain and catch-all recipient maps:
 
 ```bash
-printf '/^.+@aiprot\\.space$/ catchall\n' > /etc/postfix/virtual_mailbox_regexp
+install -m 0644 deploy/postfix/virtual_mailbox_domains_regexp /etc/postfix/virtual_mailbox_domains_regexp
+install -m 0644 deploy/postfix/virtual_mailbox_regexp /etc/postfix/virtual_mailbox_regexp
+postmap -q 'a.exa.aiprot.space' regexp:/etc/postfix/virtual_mailbox_domains_regexp
 postmap -q 'probe@aiprot.space' regexp:/etc/postfix/virtual_mailbox_regexp
 ```
 

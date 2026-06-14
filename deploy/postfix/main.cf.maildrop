@@ -6,7 +6,7 @@ mydestination = localhost
 relay_domains =
 smtpd_relay_restrictions = permit_mynetworks reject_unauth_destination
 
-virtual_mailbox_domains = aiprot.space
+virtual_mailbox_domains = regexp:/etc/postfix/virtual_mailbox_domains_regexp
 virtual_mailbox_maps = regexp:/etc/postfix/virtual_mailbox_regexp
 virtual_transport = mailapi
 mailapi_destination_recipient_limit = 1

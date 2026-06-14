@@ -8,6 +8,12 @@
   <form method="get" action="/admin" class="search-form">
     <input type="hidden" name="category" value="{{ category }}">
     <input type="search" name="q" value="{{ q }}" placeholder="搜索前缀或邮箱">
+    <select name="mail_domain_filter" aria-label="邮箱后缀筛选">
+      <option value="">全部后缀</option>
+      {% for domain in mail_domains %}
+      <option value="{{ domain }}" {{ 'selected' if mail_domain_filter == domain else '' }}>{{ domain }}</option>
+      {% endfor %}
+    </select>
     <input type="number" name="page_size" min="1" max="200" value="{{ pagination.page_size }}" aria-label="每页数量">
     <button type="submit">筛选</button>
   </form>
@@ -15,10 +21,10 @@
 
 <section class="panel">
   <nav class="tabs" aria-label="邮箱分类">
-    <a href="/admin?category=all&q={{ q|urlencode }}&page_size={{ pagination.page_size }}" class="{{ 'active' if category == 'all' else '' }}">全部</a>
-    <a href="/admin?category=unexported&q={{ q|urlencode }}&page_size={{ pagination.page_size }}" class="{{ 'active' if category == 'unexported' else '' }}">未导出</a>
-    <a href="/admin?category=exported&q={{ q|urlencode }}&page_size={{ pagination.page_size }}" class="{{ 'active' if category == 'exported' else '' }}">已导出</a>
-    <a href="/admin?category=deleted&q={{ q|urlencode }}&page_size={{ pagination.page_size }}" class="{{ 'active' if category == 'deleted' else '' }}">已删除</a>
+    <a href="/admin?category=all&q={{ q|urlencode }}&mail_domain_filter={{ mail_domain_filter|urlencode }}&page_size={{ pagination.page_size }}" class="{{ 'active' if category == 'all' else '' }}">全部</a>
+    <a href="/admin?category=unexported&q={{ q|urlencode }}&mail_domain_filter={{ mail_domain_filter|urlencode }}&page_size={{ pagination.page_size }}" class="{{ 'active' if category == 'unexported' else '' }}">未导出</a>
+    <a href="/admin?category=exported&q={{ q|urlencode }}&mail_domain_filter={{ mail_domain_filter|urlencode }}&page_size={{ pagination.page_size }}" class="{{ 'active' if category == 'exported' else '' }}">已导出</a>
+    <a href="/admin?category=deleted&q={{ q|urlencode }}&mail_domain_filter={{ mail_domain_filter|urlencode }}&page_size={{ pagination.page_size }}" class="{{ 'active' if category == 'deleted' else '' }}">已删除</a>
   </nav>
 </section>
 
@@ -27,6 +33,13 @@
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <label>生成数量 <input type="number" name="count" min="1" max="1000" value="10"></label>
     <label>前缀长度 <input type="number" name="length" min="6" max="32" value="12"></label>
+    <label>邮箱后缀
+      <select name="mail_domain">
+        {% for domain in mail_domains %}
+        <option value="{{ domain }}">{{ domain }}</option>
+        {% endfor %}
+      </select>
+    </label>
     <button type="submit">批量生成</button>
   </form>
 </section>
@@ -102,10 +115,10 @@
 
 <nav class="pager">
   {% if pagination.has_prev %}
-  <a href="/admin?category={{ category }}&q={{ q|urlencode }}&page={{ pagination.page - 1 }}&page_size={{ pagination.page_size }}">上一页</a>
+  <a href="/admin?q={{ q|urlencode }}&page={{ pagination.page - 1 }}&page_size={{ pagination.page_size }}&category={{ category }}{% if mail_domain_filter %}&mail_domain_filter={{ mail_domain_filter|urlencode }}{% endif %}">上一页</a>
   {% endif %}
   {% if pagination.has_next %}
-  <a href="/admin?category={{ category }}&q={{ q|urlencode }}&page={{ pagination.page + 1 }}&page_size={{ pagination.page_size }}">下一页</a>
+  <a href="/admin?q={{ q|urlencode }}&page={{ pagination.page + 1 }}&page_size={{ pagination.page_size }}&category={{ category }}{% if mail_domain_filter %}&mail_domain_filter={{ mail_domain_filter|urlencode }}{% endif %}">下一页</a>
   {% endif %}
 </nav>
 {% endblock %}

@@ -16,6 +16,7 @@
         <th>主题</th>
         <th>时间</th>
         <th>原因</th>
+        <th>操作</th>
       </tr>
     </thead>
     <tbody>
@@ -26,9 +27,15 @@
         <td>{{ message.subject or "-" }}</td>
         <td>{{ message.received_at }}</td>
         <td><code>{{ message.reason }}</code></td>
+        <td>
+          <form method="post" action="/admin/unassigned/{{ message.id }}/register-import">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button type="submit">登记并导入</button>
+          </form>
+        </td>
       </tr>
       {% else %}
-      <tr><td colspan="5" class="empty">暂无未登记邮件</td></tr>
+      <tr><td colspan="6" class="empty">暂无未登记邮件</td></tr>
       {% endfor %}
     </tbody>
   </table>

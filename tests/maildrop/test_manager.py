@@ -4,6 +4,7 @@ from maildrop.manager import (
     VALID_MANAGER_STATUSES,
     bulk_update_status,
     delete_managed_inbox,
+    extract_verification_codes,
     import_managed_inboxes,
     manager_stats,
     parse_import_rows,
@@ -29,6 +30,36 @@ def test_parse_import_rows_supports_common_separators():
         ("delta@aiprot.space", "https://aiprot.space/api/inbox/delta/latest.txt?token=d"),
     ]
     assert rows.invalid_count == 1
+
+
+def test_extract_verification_codes_from_chatgpt_message():
+    preview = """From: noreply@tm.openai.com
+To: wnyz41w0r5fa@aiprot.space
+Subject: 你的 ChatGPT 临时验证码
+Received: 2026-06-12T16:02:24.207599+00:00
+
+你的 ChatGPT 临时验证码
+输入此临时验证码以继续：
+306268
+如果并非你本人尝试创建 ChatGPT 帐户，请忽略此电子邮件。
+谨致问候
+ChatGPT 团队
+ChatGPT
+帮助中心
+"""
+
+    assert extract_verification_codes(preview) == ["306268"]
+
+
+def test_extract_verification_codes_ignores_dates_and_times_without_context():
+    preview = """From: service@example.test
+Received: 2026-06-12T16:02:24.207599+00:00
+
+登录时间 2026-06-12 16:02
+没有验证码内容
+"""
+
+    assert extract_verification_codes(preview) == []
 
 
 def test_import_managed_inboxes_upserts_without_resetting_status_or_note(db_session):

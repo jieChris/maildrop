@@ -7,6 +7,7 @@ from maildrop.models import Alias, Message, UnassignedMessage
 from maildrop.repository import (
     cleanup_old_messages,
     create_alias,
+    find_alias_by_email,
     generate_aliases,
     ingest_parsed_message,
     latest_message_for_alias,
@@ -63,6 +64,20 @@ def test_create_alias_stores_hash_and_returns_plain_token(db_session):
     assert verify_token(token, alias.api_token_hash)
 
 
+def test_create_alias_can_store_distinct_route_key_and_email_local_part(db_session):
+    alias, token = create_alias(
+        db_session,
+        "alpha--ssn-aiprot-space",
+        "ssn.aiprot.space",
+        email="alpha@ssn.aiprot.space",
+    )
+
+    assert alias.prefix == "alpha--ssn-aiprot-space"
+    assert alias.email == "alpha@ssn.aiprot.space"
+    assert find_alias_by_email(db_session, "ALPHA@SSN.AIPROT.SPACE") == alias
+    assert verify_token(token, alias.api_token_hash)
+
+
 def test_ingest_registered_alias_stores_message(db_session):
     alias, _ = create_alias(db_session, "alpha", "aiprot.space")
 
@@ -89,6 +104,40 @@ def test_ingest_unknown_alias_goes_to_unassigned(db_session):
     stored = db_session.query(UnassignedMessage).one()
     assert result == "unassigned"
     assert stored.recipient == "unknown@aiprot.space"
+    assert stored.reason == "alias_not_registered"
+
+
+def test_ingest_accepts_additional_domain_and_matches_full_email(db_session):
+    alias, _ = create_alias(
+        db_session,
+        "alpha--ssn-aiprot-space",
+        "ssn.aiprot.space",
+        email="alpha@ssn.aiprot.space",
+    )
+
+    result = ingest_parsed_message(
+        db_session,
+        parsed("alpha@ssn.aiprot.space"),
+        expected_domain=("aiprot.space", "ssn.aiprot.space"),
+    )
+
+    latest = latest_message_for_alias(db_session, alias)
+    assert result == "assigned"
+    assert latest is not None
+    assert latest.recipient == "alpha@ssn.aiprot.space"
+    assert alias.message_count == 1
+
+
+def test_ingest_additional_domain_unknown_alias_goes_to_unassigned(db_session):
+    result = ingest_parsed_message(
+        db_session,
+        parsed("unknown@ssn.aiprot.space"),
+        expected_domain=("aiprot.space", "ssn.aiprot.space"),
+    )
+
+    stored = db_session.query(UnassignedMessage).one()
+    assert result == "unassigned"
+    assert stored.recipient == "unknown@ssn.aiprot.space"
     assert stored.reason == "alias_not_registered"
 
 
