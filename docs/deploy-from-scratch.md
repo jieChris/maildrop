@@ -11,7 +11,8 @@
 
 ## 1. DNS
 
-在 DNS 服务商添加：
+在 DNS 服务商添加。如果使用 Spaceship，界面填写方式和冲突处理见
+`docs/spaceship-dns.md`。
 
 ```text
 mail.example.com.      A    203.0.113.10
