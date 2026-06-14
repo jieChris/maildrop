@@ -152,3 +152,7 @@ EmailEngine 回滚启动命令：
 ```bash
 ssh root@167.71.29.22 'cd /opt/emailengine && docker compose up -d'
 ```
+
+## License
+
+MIT
