@@ -99,11 +99,13 @@ ssh "$SSH_HOST" "cd $APP_DIR && cp .env.maildrop.example .env.maildrop"
 - 可选 `SPACESHIP_API_KEY`
 - 可选 `SPACESHIP_API_SECRET`
 - 可选 `SPACESHIP_DNS_DOMAIN=$DOMAIN`
+- 可选 `SPACESHIP_AUTO_REGISTER_TXT_PREFIX=openai-domain-verification=`
 
 不得把真实密码输出到对话中。
 
 如果部署者提供 Spaceship API，只要求只读权限：`domains:read` 和
-`dnsrecords:read`。不要要求或保存 `dnsrecords:write`，当前功能不需要写 DNS。
+`dnsrecords:read`。同步功能需要四个 `SPACESHIP_*` 项都显式配置。不要要求
+或保存 `dnsrecords:write`，当前功能不需要写 DNS。
 
 启动应用：
 

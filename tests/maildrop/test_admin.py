@@ -348,6 +348,7 @@ def test_admin_syncs_openai_txt_subdomains_from_spaceship():
         spaceship_api_key="key",
         spaceship_api_secret="secret",
         spaceship_dns_domain="aiprot.space",
+        spaceship_auto_register_txt_prefix="openai-domain-verification=",
     )
     client, session_factory = client_with_db(
         app_settings=app_settings,
@@ -374,6 +375,31 @@ def test_admin_syncs_openai_txt_subdomains_from_spaceship():
 
 def test_admin_spaceship_sync_requires_api_credentials():
     client, _session_factory = client_with_db()
+    form = client.get("/admin/subdomains", headers=auth_header())
+    csrf_token = csrf_token_from(form.text)
+
+    response = client.post(
+        "/admin/subdomains/sync-spaceship",
+        data={"csrf_token": csrf_token},
+        headers=auth_header(),
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "spaceship api is not configured"
+
+
+def test_admin_spaceship_sync_requires_explicit_domain_and_txt_prefix():
+    app_settings = Settings(
+        app_base_url="https://aiprot.space",
+        mail_domain="aiprot.space",
+        database_url="sqlite+pysqlite:///:memory:",
+        admin_username="admin",
+        admin_password="admin-secret",
+        ingest_token="ingest-secret",
+        spaceship_api_key="key",
+        spaceship_api_secret="secret",
+    )
+    client, _session_factory = client_with_db(app_settings=app_settings)
     form = client.get("/admin/subdomains", headers=auth_header())
     csrf_token = csrf_token_from(form.text)
 

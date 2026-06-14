@@ -283,7 +283,12 @@ def create_app(
         }
 
     def spaceship_api_is_configured() -> bool:
-        return bool(app_settings.spaceship_api_key and app_settings.spaceship_api_secret)
+        return bool(
+            app_settings.spaceship_api_key
+            and app_settings.spaceship_api_secret
+            and app_settings.spaceship_dns_domain
+            and app_settings.spaceship_auto_register_txt_prefix
+        )
 
     def spaceship_sync_client() -> SpaceshipDnsSyncClient:
         if not spaceship_api_is_configured():
@@ -291,7 +296,7 @@ def create_app(
         return SpaceshipDnsSyncClient(
             api_key=app_settings.spaceship_api_key,
             api_secret=app_settings.spaceship_api_secret,
-            domain=app_settings.spaceship_dns_domain or app_settings.mail_domain,
+            domain=app_settings.spaceship_dns_domain,
             base_url=app_settings.spaceship_api_base_url,
             transport=spaceship_transport,
         )

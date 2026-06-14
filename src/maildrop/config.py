@@ -22,7 +22,7 @@ class Settings(BaseSettings):
         alias="SPACESHIP_API_BASE_URL",
     )
     spaceship_auto_register_txt_prefix: str = Field(
-        default="openai-domain-verification=",
+        default="",
         alias="SPACESHIP_AUTO_REGISTER_TXT_PREFIX",
     )
 

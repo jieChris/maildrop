@@ -85,10 +85,11 @@ MAIL_REGISTERED_SUBDOMAINS=a.exa.example.com,b.exa.example.com
 
 后续也可以在后台 `/admin/subdomains` 继续新增。
 
-如果要让后台从 Spaceship 自动同步 OpenAI TXT 验证子域名，配置
-`SPACESHIP_API_KEY` 和 `SPACESHIP_API_SECRET`。API Key 只需要
-`domains:read` 和 `dnsrecords:read` 权限，不需要写权限。Spaceship 具体
-DNS 和 API 配置见 `docs/spaceship-dns.md`。
+如果要让后台从 Spaceship 自动同步 OpenAI TXT 验证子域名，必须显式配置
+`SPACESHIP_API_KEY`、`SPACESHIP_API_SECRET`、`SPACESHIP_DNS_DOMAIN` 和
+`SPACESHIP_AUTO_REGISTER_TXT_PREFIX`。API Key 只需要 `domains:read` 和
+`dnsrecords:read` 权限，不需要写权限。Spaceship 具体 DNS 和 API 配置见
+`docs/spaceship-dns.md`。
 
 ## 5. 启动数据库和应用
 

@@ -202,7 +202,7 @@ dnsrecords:read
 
 ### 环境变量
 
-在服务器 `.env.maildrop` 中配置：
+在服务器 `.env.maildrop` 中配置以下四项；它们都需要显式填写，同步功能才会启用：
 
 ```dotenv
 SPACESHIP_API_KEY=你的只读 API Key
