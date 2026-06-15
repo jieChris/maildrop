@@ -29,6 +29,21 @@ class Settings(BaseSettings):
         default="",
         alias="SPACESHIP_AUTO_REGISTER_PARENTS",
     )
+    cloudflare_api_token: str = Field(default="", alias="CLOUDFLARE_API_TOKEN")
+    cloudflare_zone_id: str = Field(default="", alias="CLOUDFLARE_ZONE_ID")
+    cloudflare_dns_domain: str = Field(default="", alias="CLOUDFLARE_DNS_DOMAIN")
+    cloudflare_api_base_url: str = Field(
+        default="https://api.cloudflare.com/client/v4",
+        alias="CLOUDFLARE_API_BASE_URL",
+    )
+    cloudflare_auto_register_txt_prefix: str = Field(
+        default="",
+        alias="CLOUDFLARE_AUTO_REGISTER_TXT_PREFIX",
+    )
+    cloudflare_auto_register_parents: str = Field(
+        default="",
+        alias="CLOUDFLARE_AUTO_REGISTER_PARENTS",
+    )
 
     model_config = SettingsConfigDict(
         env_file=".env.maildrop",
@@ -83,6 +98,25 @@ class Settings(BaseSettings):
     def spaceship_auto_register_parent_domains(self) -> tuple[str, ...]:
         root_domain = self.mail_domain.strip().lower().rstrip(".")
         configured = self._clean_domains(self.spaceship_auto_register_parents.split(","))
+        if not configured:
+            return (f"exa.{root_domain}",)
+
+        domains: list[str] = []
+        for domain in configured:
+            clean = domain.strip().lower().strip(".")
+            if not clean:
+                continue
+            if "." not in clean:
+                clean = f"{clean}.{root_domain}"
+            domains.append(clean)
+        return self._clean_domains(domains)
+
+    @property
+    def cloudflare_auto_register_parent_domains(self) -> tuple[str, ...]:
+        root_domain = self.cloudflare_dns_domain.strip().lower().rstrip(".")
+        if not root_domain:
+            root_domain = self.mail_domain.strip().lower().rstrip(".")
+        configured = self._clean_domains(self.cloudflare_auto_register_parents.split(","))
         if not configured:
             return (f"exa.{root_domain}",)
 

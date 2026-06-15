@@ -19,6 +19,7 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.session import sessionmaker as SessionMaker
 
+from maildrop.cloudflare import CloudflareDnsError, CloudflareDnsSyncClient
 from maildrop.config import Settings, get_settings
 from maildrop.db import create_engine_from_url, create_schema, get_db, make_session_factory
 from maildrop.mailparse import normalize_recipient
@@ -86,6 +87,7 @@ def create_app(
     session_factory: SessionMaker[Session] | None = None,
     max_message_bytes: int | None = None,
     spaceship_transport: httpx.BaseTransport | None = None,
+    cloudflare_transport: httpx.BaseTransport | None = None,
 ) -> FastAPI:
     app_settings = settings or get_settings()
     effective_max_message_bytes = max_message_bytes or app_settings.max_message_bytes
@@ -322,6 +324,8 @@ def create_app(
             "root_domains": app_settings.registered_mail_root_domains,
             "sync_parent_domains": app_settings.spaceship_auto_register_parent_domains,
             "spaceship_enabled": spaceship_api_is_configured(),
+            "cloudflare_sync_parent_domains": app_settings.cloudflare_auto_register_parent_domains,
+            "cloudflare_enabled": cloudflare_api_is_configured(),
             "notice": notice,
         }
 
@@ -344,20 +348,26 @@ def create_app(
             transport=spaceship_transport,
         )
 
-    def sync_spaceship_openai_subdomains(db: Session) -> str:
-        records = []
-        try:
-            client = spaceship_sync_client()
-            for parent_domain in app_settings.spaceship_auto_register_parent_domains:
-                records.extend(
-                    client.openai_verification_subdomains(
-                        parent_domain=parent_domain,
-                        txt_prefix=app_settings.spaceship_auto_register_txt_prefix,
-                    )
-                )
-        except SpaceshipDnsError as exc:
-            raise HTTPException(status_code=502, detail=str(exc)) from exc
+    def cloudflare_api_is_configured() -> bool:
+        return bool(
+            app_settings.cloudflare_api_token
+            and app_settings.cloudflare_zone_id
+            and app_settings.cloudflare_dns_domain
+            and app_settings.cloudflare_auto_register_txt_prefix
+        )
 
+    def cloudflare_sync_client() -> CloudflareDnsSyncClient:
+        if not cloudflare_api_is_configured():
+            raise HTTPException(status_code=400, detail="cloudflare api is not configured")
+        return CloudflareDnsSyncClient(
+            api_token=app_settings.cloudflare_api_token,
+            zone_id=app_settings.cloudflare_zone_id,
+            zone_domain=app_settings.cloudflare_dns_domain,
+            base_url=app_settings.cloudflare_api_base_url,
+            transport=cloudflare_transport,
+        )
+
+    def store_synced_subdomains(db: Session, records, provider_name: str) -> str:
         existing = set(managed_mail_domains(db))
         created: list[str] = []
         seen_records: set[str] = set()
@@ -377,8 +387,40 @@ def create_app(
             created.append(domain)
         db.commit()
         if created:
-            return f"从 Spaceship TXT 记录新增 {len(created)} 个：{', '.join(created)}；跳过 {skipped} 个"
+            return f"从 {provider_name} TXT 记录新增 {len(created)} 个：{', '.join(created)}；跳过 {skipped} 个"
         return f"没有新增子域名；跳过 {skipped} 个"
+
+    def sync_spaceship_openai_subdomains(db: Session) -> str:
+        records = []
+        try:
+            client = spaceship_sync_client()
+            for parent_domain in app_settings.spaceship_auto_register_parent_domains:
+                records.extend(
+                    client.openai_verification_subdomains(
+                        parent_domain=parent_domain,
+                        txt_prefix=app_settings.spaceship_auto_register_txt_prefix,
+                    )
+                )
+        except SpaceshipDnsError as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+        return store_synced_subdomains(db, records, "Spaceship")
+
+    def sync_cloudflare_openai_subdomains(db: Session) -> str:
+        records = []
+        try:
+            client = cloudflare_sync_client()
+            for parent_domain in app_settings.cloudflare_auto_register_parent_domains:
+                records.extend(
+                    client.openai_verification_subdomains(
+                        parent_domain=parent_domain,
+                        txt_prefix=app_settings.cloudflare_auto_register_txt_prefix,
+                    )
+                )
+        except CloudflareDnsError as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+        return store_synced_subdomains(db, records, "Cloudflare")
 
     def alias_route_key_for_recipient(db: Session, local_part: str, domain: str) -> str:
         clean_local = local_part.strip().lower()
@@ -841,6 +883,17 @@ def create_app(
     ) -> HTMLResponse:
         require_csrf(request, csrf_token)
         notice = sync_spaceship_openai_subdomains(db)
+        return render_admin(request, "subdomains.html", subdomain_context(db, notice=notice))
+
+    @app.post("/admin/subdomains/sync-cloudflare", response_class=HTMLResponse)
+    def admin_sync_cloudflare_subdomains(
+        request: Request,
+        csrf_token: str = Form(""),
+        _: str = Depends(require_admin),
+        db: Session = Depends(db_dep),
+    ) -> HTMLResponse:
+        require_csrf(request, csrf_token)
+        notice = sync_cloudflare_openai_subdomains(db)
         return render_admin(request, "subdomains.html", subdomain_context(db, notice=notice))
 
     @app.post("/admin/subdomains/{subdomain_id}/delete")

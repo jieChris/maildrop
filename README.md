@@ -15,6 +15,7 @@ Maildrop 是一个轻量自托管收信服务，用 Postfix 接收 catch-all 邮
 - 收件管理器：`/xxxmailmanage` 可导入邮箱和 API 链接，并标记 `待消耗`、`已消耗`、`错误`。
 - 子域名管理：后台可登记 `*.exa.<domain>`、`*.exe.<domain>` 等主域下的邮箱后缀，并分别批量生成和管理。
 - Spaceship 同步：可用只读 API 扫描 `openai-domain-verification=` TXT，自动登记 `exa`、`exe` 等配置父级下的子域名。
+- Cloudflare 同步：可用只读 API Token 扫描 Cloudflare TXT，自动登记 `exa`、`exe`、`xx` 等配置父级下的子域名。
 
 当前仓库中的生产示例使用 `aiprot.space`。如果部署到别的域名，请按 `docs/deploy-from-scratch.md` 替换域名和 IP。
 
@@ -44,7 +45,7 @@ Maildrop 是一个轻量自托管收信服务，用 Postfix 接收 catch-all 邮
 如果本地 `.env.maildrop` 已填生产域名、子域名或 Spaceship API 配置，测试前可用空值覆盖这些可选项，避免测试读取本地私有配置：
 
 ```bash
-MAIL_DOMAINS='' MAIL_REGISTERED_SUBDOMAINS='' SPACESHIP_API_KEY='' SPACESHIP_API_SECRET='' SPACESHIP_DNS_DOMAIN='' SPACESHIP_AUTO_REGISTER_TXT_PREFIX='' SPACESHIP_AUTO_REGISTER_PARENTS='' .venv/bin/python -m pytest tests/maildrop -q
+MAIL_DOMAINS='' MAIL_REGISTERED_SUBDOMAINS='' SPACESHIP_API_KEY='' SPACESHIP_API_SECRET='' SPACESHIP_DNS_DOMAIN='' SPACESHIP_AUTO_REGISTER_TXT_PREFIX='' SPACESHIP_AUTO_REGISTER_PARENTS='' CLOUDFLARE_API_TOKEN='' CLOUDFLARE_ZONE_ID='' CLOUDFLARE_DNS_DOMAIN='' CLOUDFLARE_AUTO_REGISTER_TXT_PREFIX='' CLOUDFLARE_AUTO_REGISTER_PARENTS='' .venv/bin/python -m pytest tests/maildrop -q
 ```
 
 ## Docker Compose 配置检查

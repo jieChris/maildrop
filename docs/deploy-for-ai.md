@@ -46,6 +46,11 @@ SPACESHIP_API_SECRET=<只读APISecret>
 SPACESHIP_DNS_DOMAIN=example.com
 SPACESHIP_AUTO_REGISTER_TXT_PREFIX=openai-domain-verification=
 SPACESHIP_AUTO_REGISTER_PARENTS=exa,exe
+CLOUDFLARE_API_TOKEN=<只读Token>
+CLOUDFLARE_ZONE_ID=<ZoneID>
+CLOUDFLARE_DNS_DOMAIN=example.com
+CLOUDFLARE_AUTO_REGISTER_TXT_PREFIX=openai-domain-verification=
+CLOUDFLARE_AUTO_REGISTER_PARENTS=exa,exe,xx
 ```
 
 如果用户没有给固定子域名：
@@ -149,6 +154,11 @@ SPACESHIP_API_SECRET=
 SPACESHIP_DNS_DOMAIN=example.com
 SPACESHIP_AUTO_REGISTER_TXT_PREFIX=openai-domain-verification=
 SPACESHIP_AUTO_REGISTER_PARENTS=exa,exe
+CLOUDFLARE_API_TOKEN=
+CLOUDFLARE_ZONE_ID=
+CLOUDFLARE_DNS_DOMAIN=example.com
+CLOUDFLARE_AUTO_REGISTER_TXT_PREFIX=openai-domain-verification=
+CLOUDFLARE_AUTO_REGISTER_PARENTS=exa,exe,xx
 
 POSTGRES_DB=maildrop
 POSTGRES_USER=maildrop
@@ -242,7 +252,7 @@ git diff --check
 `MAIL_DOMAINS` 或 `SPACESHIP_*` 配置。此时用空值覆盖可选项后重跑：
 
 ```bash
-MAIL_DOMAINS='' MAIL_REGISTERED_SUBDOMAINS='' SPACESHIP_API_KEY='' SPACESHIP_API_SECRET='' SPACESHIP_DNS_DOMAIN='' SPACESHIP_AUTO_REGISTER_TXT_PREFIX='' SPACESHIP_AUTO_REGISTER_PARENTS='' .venv/bin/python -m pytest tests/maildrop -q
+MAIL_DOMAINS='' MAIL_REGISTERED_SUBDOMAINS='' SPACESHIP_API_KEY='' SPACESHIP_API_SECRET='' SPACESHIP_DNS_DOMAIN='' SPACESHIP_AUTO_REGISTER_TXT_PREFIX='' SPACESHIP_AUTO_REGISTER_PARENTS='' CLOUDFLARE_API_TOKEN='' CLOUDFLARE_ZONE_ID='' CLOUDFLARE_DNS_DOMAIN='' CLOUDFLARE_AUTO_REGISTER_TXT_PREFIX='' CLOUDFLARE_AUTO_REGISTER_PARENTS='' .venv/bin/python -m pytest tests/maildrop -q
 ```
 
 服务器必须运行：
@@ -291,7 +301,27 @@ https://<domain>/admin/subdomains
 
 如果返回 502，检查 Spaceship API 权限、Key/Secret、`SPACESHIP_DNS_DOMAIN`。
 
-## 13. 部署完成后告诉用户
+## 13. Cloudflare TXT 自动登记验收
+
+只有当用户配置了 Cloudflare API Token、Zone ID、DNS 域名和 TXT 前缀才执行。
+
+后台入口：
+
+```text
+https://<domain>/admin/subdomains
+```
+
+验证点：
+
+- “从 Cloudflare TXT 记录同步”按钮不是 disabled。
+- 点击后 HTTP 返回 `200`。
+- 返回文案可能是“新增 N 个”或“没有新增子域名；跳过 N 个”。
+
+Cloudflare API Token 只需要 Zone DNS 读取权限，不要要求编辑权限。`CLOUDFLARE_AUTO_REGISTER_PARENTS` 控制扫描父级，例如 `exa,exe,xx` 或完整域名。
+
+如果返回 502，检查 Cloudflare API Token、Zone ID、`CLOUDFLARE_DNS_DOMAIN`。
+
+## 14. 部署完成后告诉用户
 
 最终回复必须包含：
 

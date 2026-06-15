@@ -36,6 +36,17 @@
 </section>
 
 <section class="panel">
+  <form method="post" action="/admin/subdomains/sync-cloudflare" class="toolbar">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <button type="submit" {{ '' if cloudflare_enabled else 'disabled' }}>从 Cloudflare TXT 记录同步</button>
+    <span class="hint">
+      读取 {{ cloudflare_sync_parent_domains|join(', ') }} 下 openai-domain-verification TXT，自动登记未存在的子域名。
+      {% if not cloudflare_enabled %}未完整配置 Cloudflare API Token、Zone ID、DNS 域名和 TXT 前缀。{% endif %}
+    </span>
+  </form>
+</section>
+
+<section class="panel">
   <table>
     <thead>
       <tr>

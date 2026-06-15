@@ -615,6 +615,94 @@ def test_admin_spaceship_sync_requires_explicit_domain_and_txt_prefix():
     assert response.json()["detail"] == "spaceship api is not configured"
 
 
+def test_admin_syncs_openai_txt_subdomains_from_cloudflare():
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(
+            200,
+            json={
+                "success": True,
+                "result": [
+                    {
+                        "type": "TXT",
+                        "name": "urxg.xx.xoxo.edu.kg",
+                        "content": "openai-domain-verification=dv-xx",
+                    },
+                    {
+                        "type": "TXT",
+                        "name": "ignored.xx.xoxo.edu.kg",
+                        "content": "not-openai",
+                    },
+                    {
+                        "type": "TXT",
+                        "name": "abcd.exa.xoxo.edu.kg",
+                        "content": "openai-domain-verification=dv-exa",
+                    },
+                ],
+                "result_info": {"page": 1, "total_pages": 1},
+            },
+        )
+
+    app_settings = Settings(
+        app_base_url="https://aiprot.space",
+        mail_domain="aiprot.space",
+        mail_domains="aiprot.space,xoxo.edu.kg,xx.xoxo.edu.kg,exa.xoxo.edu.kg",
+        database_url="sqlite+pysqlite:///:memory:",
+        admin_username="admin",
+        admin_password="admin-secret",
+        ingest_token="ingest-secret",
+        cloudflare_api_token="token",
+        cloudflare_zone_id="zone-id",
+        cloudflare_dns_domain="xoxo.edu.kg",
+        cloudflare_auto_register_txt_prefix="openai-domain-verification=",
+        cloudflare_auto_register_parents="xx,exa",
+    )
+    client, session_factory = client_with_db(
+        app_settings=app_settings,
+        cloudflare_transport=httpx.MockTransport(handler),
+    )
+    form = client.get("/admin/subdomains", headers=auth_header())
+    csrf_token = csrf_token_from(form.text)
+
+    response = client.post(
+        "/admin/subdomains/sync-cloudflare",
+        data={"csrf_token": csrf_token},
+        headers=auth_header(),
+    )
+
+    assert response.status_code == 200
+    assert "Cloudflare TXT 记录新增 2 个" in response.text
+    assert "urxg.xx.xoxo.edu.kg" in response.text
+    assert "abcd.exa.xoxo.edu.kg" in response.text
+    with session_factory() as db:
+        assert (
+            db.query(RegisteredSubdomain).filter_by(domain="urxg.xx.xoxo.edu.kg").one().domain
+            == "urxg.xx.xoxo.edu.kg"
+        )
+        assert (
+            db.query(RegisteredSubdomain).filter_by(domain="abcd.exa.xoxo.edu.kg").one().domain
+            == "abcd.exa.xoxo.edu.kg"
+        )
+    assert requests[0].headers["Authorization"] == "Bearer token"
+
+
+def test_admin_cloudflare_sync_requires_api_configuration():
+    client, _session_factory = client_with_db()
+    form = client.get("/admin/subdomains", headers=auth_header())
+    csrf_token = csrf_token_from(form.text)
+
+    response = client.post(
+        "/admin/subdomains/sync-cloudflare",
+        data={"csrf_token": csrf_token},
+        headers=auth_header(),
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "cloudflare api is not configured"
+
+
 def test_admin_bulk_rejects_unconfigured_mail_suffix():
     client, _session_factory = client_with_db()
     form = client.get("/admin", headers=auth_header())

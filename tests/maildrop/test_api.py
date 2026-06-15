@@ -29,6 +29,7 @@ def client_with_db(
     max_message_bytes: int = 26_214_400,
     app_settings: Settings | None = None,
     spaceship_transport=None,
+    cloudflare_transport=None,
 ):
     engine = create_engine_from_url(
         "sqlite+pysqlite:///:memory:",
@@ -42,6 +43,7 @@ def client_with_db(
         session_factory=session_factory,
         max_message_bytes=max_message_bytes,
         spaceship_transport=spaceship_transport,
+        cloudflare_transport=cloudflare_transport,
     )
     return TestClient(app, base_url="https://testserver"), session_factory
 

@@ -218,7 +218,51 @@ urxg.exa.example.com TXT openai-domain-verification=xxxx
 
 然后把 `urxg.exa.example.com` 登记进系统。
 
-## 6. 部署完成后怎么访问
+## 6. Cloudflare API 自动同步怎么填
+
+如果你不需要自动读取 Cloudflare TXT，可以留空：
+
+```dotenv
+CLOUDFLARE_API_TOKEN=
+CLOUDFLARE_ZONE_ID=
+CLOUDFLARE_DNS_DOMAIN=
+CLOUDFLARE_AUTO_REGISTER_TXT_PREFIX=openai-domain-verification=
+CLOUDFLARE_AUTO_REGISTER_PARENTS=exa,exe,xx
+```
+
+如果要用后台按钮自动登记 Cloudflare 中的 OpenAI 验证子域名，必须填写：
+
+```dotenv
+CLOUDFLARE_API_TOKEN=你的只读 API Token
+CLOUDFLARE_ZONE_ID=Cloudflare Zone ID
+CLOUDFLARE_DNS_DOMAIN=example.com
+CLOUDFLARE_AUTO_REGISTER_TXT_PREFIX=openai-domain-verification=
+CLOUDFLARE_AUTO_REGISTER_PARENTS=exa,exe,xx
+```
+
+Cloudflare API Token 只需要该 Zone 的 DNS 读取权限，不需要编辑权限。系统只读取 TXT 记录，不创建、不修改、不删除 Cloudflare DNS 记录。
+
+`CLOUDFLARE_AUTO_REGISTER_PARENTS` 是要自动扫描的父级后缀列表。可以写短名：
+
+```dotenv
+CLOUDFLARE_AUTO_REGISTER_PARENTS=exa,exe,xx
+```
+
+也可以写完整域名：
+
+```dotenv
+CLOUDFLARE_AUTO_REGISTER_PARENTS=exa.example.com,exe.example.com,xx.example.com
+```
+
+点击“从 Cloudflare TXT 记录同步”后，系统会查找类似：
+
+```text
+urxg.xx.example.com TXT openai-domain-verification=xxxx
+```
+
+然后把 `urxg.xx.example.com` 登记进系统。
+
+## 7. 部署完成后怎么访问
 
 后台：
 
@@ -244,7 +288,7 @@ https://example.com/admin/subdomains
 https://example.com/api/health
 ```
 
-## 7. 最后验收清单
+## 8. 最后验收清单
 
 部署者或 AI 代理需要确认：
 

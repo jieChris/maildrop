@@ -88,6 +88,11 @@ SPACESHIP_API_SECRET=
 SPACESHIP_DNS_DOMAIN=example.com
 SPACESHIP_AUTO_REGISTER_TXT_PREFIX=openai-domain-verification=
 SPACESHIP_AUTO_REGISTER_PARENTS=exa,exe
+CLOUDFLARE_API_TOKEN=
+CLOUDFLARE_ZONE_ID=
+CLOUDFLARE_DNS_DOMAIN=example.com
+CLOUDFLARE_AUTO_REGISTER_TXT_PREFIX=openai-domain-verification=
+CLOUDFLARE_AUTO_REGISTER_PARENTS=exa,exe,xx
 ```
 
 如果已经确定要预置子域名，可设置：
@@ -104,6 +109,12 @@ MAIL_REGISTERED_SUBDOMAINS=a.exa.example.com,b.exa.example.com
 父级后缀，例如 `exa,exe`。API Key 只需要 `domains:read` 和
 `dnsrecords:read` 权限，不需要写权限。Spaceship 具体 DNS 和 API 配置见
 `docs/spaceship-dns.md`。
+
+如果要让后台从 Cloudflare 自动同步 OpenAI TXT 验证子域名，必须显式配置
+`CLOUDFLARE_API_TOKEN`、`CLOUDFLARE_ZONE_ID`、`CLOUDFLARE_DNS_DOMAIN` 和
+`CLOUDFLARE_AUTO_REGISTER_TXT_PREFIX`。`CLOUDFLARE_AUTO_REGISTER_PARENTS`
+控制要扫描的父级后缀，例如 `exa,exe,xx`。Cloudflare API Token 只需要
+Zone DNS 读取权限，不需要编辑权限。
 
 ## 5. 启动数据库和应用
 

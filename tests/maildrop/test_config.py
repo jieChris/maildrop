@@ -95,6 +95,23 @@ def test_spaceship_sync_settings_are_blank_until_explicitly_configured():
     assert settings.spaceship_auto_register_parent_domains == ("exa.aiprot.space",)
 
 
+def test_cloudflare_sync_settings_are_blank_until_explicitly_configured():
+    settings = Settings(
+        app_base_url="https://aiprot.space",
+        mail_domain="aiprot.space",
+        database_url="sqlite+pysqlite:///:memory:",
+        admin_username="admin",
+        admin_password="admin-secret",
+        ingest_token="ingest-secret",
+    )
+
+    assert settings.cloudflare_api_token == ""
+    assert settings.cloudflare_zone_id == ""
+    assert settings.cloudflare_dns_domain == ""
+    assert settings.cloudflare_auto_register_txt_prefix == ""
+    assert settings.cloudflare_auto_register_parent_domains == ("exa.aiprot.space",)
+
+
 def test_settings_parses_spaceship_auto_register_parent_domains():
     settings = Settings(
         app_base_url="https://aiprot.space",
@@ -109,6 +126,25 @@ def test_settings_parses_spaceship_auto_register_parent_domains():
     assert settings.spaceship_auto_register_parent_domains == (
         "exa.aiprot.space",
         "exe.aiprot.space",
+    )
+
+
+def test_settings_parses_cloudflare_auto_register_parent_domains():
+    settings = Settings(
+        app_base_url="https://aiprot.space",
+        mail_domain="aiprot.space",
+        mail_domains="xoxo.edu.kg",
+        database_url="sqlite+pysqlite:///:memory:",
+        admin_username="admin",
+        admin_password="admin-secret",
+        ingest_token="ingest-secret",
+        cloudflare_dns_domain="xoxo.edu.kg",
+        cloudflare_auto_register_parents="xx, exa.xoxo.edu.kg",
+    )
+
+    assert settings.cloudflare_auto_register_parent_domains == (
+        "xx.xoxo.edu.kg",
+        "exa.xoxo.edu.kg",
     )
 
 
