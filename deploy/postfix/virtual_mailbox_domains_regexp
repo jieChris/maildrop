@@ -1,2 +1,4 @@
 /^aiprot\.space$/ OK
 /^[a-z0-9-]+(\.[a-z0-9-]+)*\.aiprot\.space$/ OK
+/^xoxo\.edu\.kg$/ OK
+/^[a-z0-9-]+(\.[a-z0-9-]+)*\.xoxo\.edu\.kg$/ OK

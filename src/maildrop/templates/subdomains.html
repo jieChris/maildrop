@@ -17,9 +17,9 @@
   <form method="post" action="/admin/subdomains" class="toolbar">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <label>邮箱后缀
-      <input type="text" name="subdomain" placeholder="例如 c、c.exe 或 exe.aiprot.space" autocomplete="off" required>
+      <input type="text" name="subdomain" placeholder="例如 c、c.exe、exe.aiprot.space 或 a.exa.xoxo.edu.kg" autocomplete="off" required>
     </label>
-    <span class="hint">单段输入默认生成 .{{ parent_domain }}；带点输入按 {{ root_domain }} 下的后缀登记。</span>
+    <span class="hint">单段输入默认生成 .{{ parent_domain }}；完整域名需位于 {{ root_domains|join(', ') }} 之一下面。</span>
     <button type="submit">新增</button>
   </form>
 </section>

@@ -1,1 +1,1 @@
-/^.+@(aiprot\.space|[a-z0-9-]+(\.[a-z0-9-]+)*\.aiprot\.space)$/ catchall
+/^.+@(aiprot\.space|[a-z0-9-]+(\.[a-z0-9-]+)*\.aiprot\.space|xoxo\.edu\.kg|[a-z0-9-]+(\.[a-z0-9-]+)*\.xoxo\.edu\.kg)$/ catchall

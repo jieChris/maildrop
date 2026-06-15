@@ -1,4 +1,4 @@
-aiprot.space, www.aiprot.space, engine.aiprot.space {
+aiprot.space, www.aiprot.space, engine.aiprot.space, xoxo.edu.kg, www.xoxo.edu.kg, mail.xoxo.edu.kg {
     handle /internal/* {
         respond 404
     }

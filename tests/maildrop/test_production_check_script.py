@@ -175,10 +175,14 @@ def _regexp_table_matches(path: Path, value: str) -> bool:
 def test_postfix_templates_allow_custom_subdomains_under_mail_domain():
     assert _regexp_table_matches(POSTFIX_DOMAINS, "exe.aiprot.space")
     assert _regexp_table_matches(POSTFIX_DOMAINS, "c.exe.aiprot.space")
+    assert _regexp_table_matches(POSTFIX_DOMAINS, "xoxo.edu.kg")
+    assert _regexp_table_matches(POSTFIX_DOMAINS, "a.exa.xoxo.edu.kg")
     assert not _regexp_table_matches(POSTFIX_DOMAINS, "evil.example.com")
 
     assert _regexp_table_matches(POSTFIX_RECIPIENTS, "alpha@exe.aiprot.space")
     assert _regexp_table_matches(POSTFIX_RECIPIENTS, "alpha@c.exe.aiprot.space")
+    assert _regexp_table_matches(POSTFIX_RECIPIENTS, "alpha@xoxo.edu.kg")
+    assert _regexp_table_matches(POSTFIX_RECIPIENTS, "alpha@a.exa.xoxo.edu.kg")
     assert not _regexp_table_matches(POSTFIX_RECIPIENTS, "alpha@evil.example.com")
 
 

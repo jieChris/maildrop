@@ -360,6 +360,36 @@ def test_admin_can_register_relative_custom_subdomain_suffix():
         assert stored.domain == "c.exe.aiprot.space"
 
 
+def test_admin_can_register_full_subdomain_under_additional_root_domain():
+    app_settings = Settings(
+        app_base_url="https://aiprot.space",
+        mail_domain="aiprot.space",
+        mail_domains="aiprot.space,xoxo.edu.kg",
+        mail_registered_subdomains="",
+        database_url="sqlite+pysqlite:///:memory:",
+        admin_username="admin",
+        admin_password="admin-secret",
+        ingest_token="ingest-secret",
+    )
+    client, session_factory = client_with_db(app_settings=app_settings)
+    form = client.get("/admin/subdomains", headers=auth_header())
+    csrf_token = csrf_token_from(form.text)
+
+    response = client.post(
+        "/admin/subdomains",
+        data={"csrf_token": csrf_token, "subdomain": "a.exa.xoxo.edu.kg"},
+        headers=auth_header(),
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    admin = client.get("/admin", headers=auth_header())
+    assert '<option value="a.exa.xoxo.edu.kg">a.exa.xoxo.edu.kg-------0</option>' in admin.text
+    with session_factory() as db:
+        stored = db.query(RegisteredSubdomain).filter_by(domain="a.exa.xoxo.edu.kg").one()
+        assert stored.domain == "a.exa.xoxo.edu.kg"
+
+
 def test_admin_rejects_invalid_registered_exa_subdomain_names():
     client, _session_factory = client_with_db()
     form = client.get("/admin/subdomains", headers=auth_header())

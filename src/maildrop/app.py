@@ -223,14 +223,31 @@ def create_app(
     def registered_subdomain_parent() -> str:
         return f"exa.{app_settings.mail_domain.strip().lower()}"
 
+    def registered_subdomain_roots() -> tuple[str, ...]:
+        return tuple(
+            sorted(
+                app_settings.registered_mail_root_domains,
+                key=len,
+                reverse=True,
+            )
+        )
+
+    def root_for_registered_subdomain(domain: str) -> str | None:
+        clean_domain = domain.strip().lower().rstrip(".")
+        for root_domain in registered_subdomain_roots():
+            if clean_domain.endswith(f".{root_domain}"):
+                return root_domain
+        return None
+
     def normalize_registered_subdomain(value: str) -> str:
         clean = value.strip().lower().strip(".")
         root_domain = app_settings.mail_domain.strip().lower().rstrip(".")
         parent = registered_subdomain_parent()
+        root_domains = registered_subdomain_roots()
 
-        if not clean or clean == root_domain:
+        if not clean or clean in root_domains:
             raise ValueError("invalid subdomain")
-        if clean.endswith(f".{root_domain}"):
+        if root_for_registered_subdomain(clean):
             domain = clean
         elif "." in clean:
             if len(clean.split(".")) != 2:
@@ -239,9 +256,10 @@ def create_app(
         else:
             domain = f"{clean}.{parent}"
 
-        if domain == root_domain or not domain.endswith(f".{root_domain}"):
+        matched_root = root_for_registered_subdomain(domain)
+        if not matched_root or domain == matched_root:
             raise ValueError("invalid subdomain")
-        relative = domain[: -(len(root_domain) + 1)]
+        relative = domain[: -(len(matched_root) + 1)]
         labels = relative.split(".")
         if not labels or any(not REGISTERED_SUBDOMAIN_LABEL_RE.fullmatch(label) for label in labels):
             raise ValueError("invalid subdomain")
@@ -301,6 +319,7 @@ def create_app(
             "subdomains": rows,
             "parent_domain": registered_subdomain_parent(),
             "root_domain": app_settings.mail_domain.strip().lower(),
+            "root_domains": app_settings.registered_mail_root_domains,
             "sync_parent_domains": app_settings.spaceship_auto_register_parent_domains,
             "spaceship_enabled": spaceship_api_is_configured(),
             "notice": notice,

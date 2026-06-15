@@ -70,6 +70,16 @@ class Settings(BaseSettings):
         return self._clean_domains(domains)
 
     @property
+    def registered_mail_root_domains(self) -> tuple[str, ...]:
+        root_domain = self.mail_domain.strip().lower().rstrip(".")
+        roots = [root_domain]
+        for domain in self._clean_domains(self.mail_domains.split(",")):
+            if domain == root_domain or domain.endswith(f".{root_domain}"):
+                continue
+            roots.append(domain)
+        return self._clean_domains(roots)
+
+    @property
     def spaceship_auto_register_parent_domains(self) -> tuple[str, ...]:
         root_domain = self.mail_domain.strip().lower().rstrip(".")
         configured = self._clean_domains(self.spaceship_auto_register_parents.split(","))
