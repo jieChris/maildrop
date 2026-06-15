@@ -8,6 +8,12 @@
   <form method="get" action="/admin" class="search-form">
     <input type="hidden" name="category" value="{{ category }}">
     <input type="search" name="q" value="{{ q }}" placeholder="搜索前缀或邮箱">
+    <select name="mail_domain_root" aria-label="根域名筛选">
+      <option value="">全部根域名</option>
+      {% for root in mail_domain_roots %}
+      <option value="{{ root }}" {{ 'selected' if mail_domain_root == root else '' }}>{{ root }}</option>
+      {% endfor %}
+    </select>
     <select name="mail_domain_filter" aria-label="邮箱后缀筛选">
       <option value="">全部后缀</option>
       {% for group in mail_domain_option_groups %}
@@ -25,10 +31,10 @@
 
 <section class="panel">
   <nav class="tabs" aria-label="邮箱分类">
-    <a href="/admin?category=all&q={{ q|urlencode }}&mail_domain_filter={{ mail_domain_filter|urlencode }}&page_size={{ pagination.page_size }}" class="{{ 'active' if category == 'all' else '' }}">全部</a>
-    <a href="/admin?category=unexported&q={{ q|urlencode }}&mail_domain_filter={{ mail_domain_filter|urlencode }}&page_size={{ pagination.page_size }}" class="{{ 'active' if category == 'unexported' else '' }}">未导出</a>
-    <a href="/admin?category=exported&q={{ q|urlencode }}&mail_domain_filter={{ mail_domain_filter|urlencode }}&page_size={{ pagination.page_size }}" class="{{ 'active' if category == 'exported' else '' }}">已导出</a>
-    <a href="/admin?category=deleted&q={{ q|urlencode }}&mail_domain_filter={{ mail_domain_filter|urlencode }}&page_size={{ pagination.page_size }}" class="{{ 'active' if category == 'deleted' else '' }}">已删除</a>
+    <a href="/admin?category=all&q={{ q|urlencode }}&mail_domain_root={{ mail_domain_root|urlencode }}&mail_domain_filter={{ mail_domain_filter|urlencode }}&page_size={{ pagination.page_size }}" class="{{ 'active' if category == 'all' else '' }}">全部</a>
+    <a href="/admin?category=unexported&q={{ q|urlencode }}&mail_domain_root={{ mail_domain_root|urlencode }}&mail_domain_filter={{ mail_domain_filter|urlencode }}&page_size={{ pagination.page_size }}" class="{{ 'active' if category == 'unexported' else '' }}">未导出</a>
+    <a href="/admin?category=exported&q={{ q|urlencode }}&mail_domain_root={{ mail_domain_root|urlencode }}&mail_domain_filter={{ mail_domain_filter|urlencode }}&page_size={{ pagination.page_size }}" class="{{ 'active' if category == 'exported' else '' }}">已导出</a>
+    <a href="/admin?category=deleted&q={{ q|urlencode }}&mail_domain_root={{ mail_domain_root|urlencode }}&mail_domain_filter={{ mail_domain_filter|urlencode }}&page_size={{ pagination.page_size }}" class="{{ 'active' if category == 'deleted' else '' }}">已删除</a>
   </nav>
 </section>
 
@@ -123,10 +129,10 @@
 
 <nav class="pager">
   {% if pagination.has_prev %}
-  <a href="/admin?q={{ q|urlencode }}&page={{ pagination.page - 1 }}&page_size={{ pagination.page_size }}&category={{ category }}{% if mail_domain_filter %}&mail_domain_filter={{ mail_domain_filter|urlencode }}{% endif %}">上一页</a>
+  <a href="/admin?q={{ q|urlencode }}&page={{ pagination.page - 1 }}&page_size={{ pagination.page_size }}&category={{ category }}{% if mail_domain_root %}&mail_domain_root={{ mail_domain_root|urlencode }}{% endif %}{% if mail_domain_filter %}&mail_domain_filter={{ mail_domain_filter|urlencode }}{% endif %}">上一页</a>
   {% endif %}
   {% if pagination.has_next %}
-  <a href="/admin?q={{ q|urlencode }}&page={{ pagination.page + 1 }}&page_size={{ pagination.page_size }}&category={{ category }}{% if mail_domain_filter %}&mail_domain_filter={{ mail_domain_filter|urlencode }}{% endif %}">下一页</a>
+  <a href="/admin?q={{ q|urlencode }}&page={{ pagination.page + 1 }}&page_size={{ pagination.page_size }}&category={{ category }}{% if mail_domain_root %}&mail_domain_root={{ mail_domain_root|urlencode }}{% endif %}{% if mail_domain_filter %}&mail_domain_filter={{ mail_domain_filter|urlencode }}{% endif %}">下一页</a>
   {% endif %}
 </nav>
 {% endblock %}

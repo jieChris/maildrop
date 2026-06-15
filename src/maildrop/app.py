@@ -313,6 +313,14 @@ def create_app(
             if options
         ]
 
+    def visible_mail_domain_option_groups(
+        groups: list[dict[str, object]],
+        mail_domain_root: str,
+    ) -> list[dict[str, object]]:
+        if not mail_domain_root:
+            return groups
+        return [group for group in groups if group["root"] == mail_domain_root]
+
     def subdomain_context(db: Session, notice: str = "") -> dict[str, object]:
         env_domains = set(app_settings.registered_mail_subdomains)
         db_domains = list(
@@ -715,15 +723,43 @@ def create_app(
         return ()
 
     def alias_domain_filter(mail_domain: str):
-        clean_domain = mail_domain.strip().lower()
+        clean_domain = mail_domain.strip().lower().strip(".")
         if not clean_domain:
             return None
         return clean_domain, func.lower(Alias.email).like(f"%@{clean_domain}")
 
+    def alias_root_domain_filter(mail_domain_root: str):
+        clean_root = mail_domain_root.strip().lower().strip(".")
+        if not clean_root:
+            return None
+        return clean_root, or_(
+            func.lower(Alias.email).like(f"%@{clean_root}"),
+            func.lower(Alias.email).like(f"%@%.{clean_root}"),
+        )
+
     def require_managed_mail_domain(db: Session, domain: str) -> None:
-        clean_domain = domain.strip().lower()
+        clean_domain = domain.strip().lower().strip(".")
         if clean_domain and clean_domain not in managed_mail_domains(db):
             raise HTTPException(status_code=400, detail="unsupported mail domain")
+
+    def require_mail_domain_root(db: Session, root: str) -> None:
+        clean_root = root.strip().lower().strip(".")
+        roots = mail_domain_group_roots(managed_mail_domains(db))
+        if clean_root and clean_root not in roots:
+            raise HTTPException(status_code=400, detail="unsupported mail domain root")
+
+    def clean_mail_domain_root(db: Session, root: str, mail_domain_filter: str) -> str:
+        clean_root = root.strip().lower().strip(".")
+        roots = mail_domain_group_roots(managed_mail_domains(db))
+        if clean_root:
+            require_mail_domain_root(db, clean_root)
+            return clean_root
+        domain_filter = alias_domain_filter(mail_domain_filter)
+        if domain_filter is None:
+            return ""
+        clean_domain, _domain_clause = domain_filter
+        require_managed_mail_domain(db, clean_domain)
+        return mail_domain_group_for(clean_domain, roots)
 
     def paged_alias_context(
         db: Session,
@@ -731,9 +767,15 @@ def create_app(
         category: str,
         page: int,
         page_size: int,
+        mail_domain_root: str = "",
         mail_domain_filter: str = "",
         generated: list[dict[str, str]] | None = None,
     ) -> dict:
+        clean_root = clean_mail_domain_root(db, mail_domain_root, mail_domain_filter)
+        roots = mail_domain_group_roots(managed_mail_domains(db))
+        clean_filter = mail_domain_filter.strip().lower().strip(".")
+        if clean_root and clean_filter and mail_domain_group_for(clean_filter, roots) != clean_root:
+            clean_filter = ""
         where_clause = alias_filter(q)
         total_stmt = select(func.count()).select_from(Alias)
         list_stmt = select(Alias).order_by(Alias.created_at.desc(), Alias.id.desc())
@@ -744,18 +786,26 @@ def create_app(
         if category_clauses:
             total_stmt = total_stmt.where(*category_clauses)
             list_stmt = list_stmt.where(*category_clauses)
-        domain_filter = alias_domain_filter(mail_domain_filter)
+        domain_filter = alias_domain_filter(clean_filter)
         if domain_filter is not None:
             clean_domain, domain_clause = domain_filter
             require_managed_mail_domain(db, clean_domain)
             total_stmt = total_stmt.where(domain_clause)
             list_stmt = list_stmt.where(domain_clause)
+        else:
+            root_filter = alias_root_domain_filter(clean_root)
+            if root_filter is not None:
+                clean_root, root_clause = root_filter
+                require_mail_domain_root(db, clean_root)
+                total_stmt = total_stmt.where(root_clause)
+                list_stmt = list_stmt.where(root_clause)
         total = db.execute(total_stmt).scalar_one()
         aliases = (
             db.execute(list_stmt.offset((page - 1) * page_size).limit(page_size))
             .scalars()
             .all()
         )
+        option_groups = mail_domain_option_groups(db)
         return {
             "title": "邮箱别名",
             "aliases": [alias_view(alias) for alias in aliases],
@@ -764,8 +814,10 @@ def create_app(
             "category": category,
             "mail_domains": managed_mail_domains(db),
             "mail_domain_options": mail_domain_options(db),
-            "mail_domain_option_groups": mail_domain_option_groups(db),
-            "mail_domain_filter": mail_domain_filter.strip().lower(),
+            "mail_domain_roots": [group["root"] for group in option_groups],
+            "mail_domain_option_groups": visible_mail_domain_option_groups(option_groups, clean_root),
+            "mail_domain_root": clean_root,
+            "mail_domain_filter": clean_filter,
             "pagination": pagination(page, page_size, total),
         }
 
@@ -863,6 +915,7 @@ def create_app(
         request: Request,
         q: str = Query("", max_length=128),
         category: str = Query("all", pattern="^(all|unexported|exported|deleted)$"),
+        mail_domain_root: str = Query("", max_length=320),
         mail_domain: str = Query("", max_length=320),
         mail_domain_filter: str = Query("", max_length=320),
         page: int = Query(1, ge=1),
@@ -874,7 +927,15 @@ def create_app(
         return render_admin(
             request,
             "aliases.html",
-            paged_alias_context(db, q, category, page, page_size, selected_mail_domain),
+            paged_alias_context(
+                db,
+                q,
+                category,
+                page,
+                page_size,
+                mail_domain_root,
+                selected_mail_domain,
+            ),
         )
 
     @app.get("/admin/subdomains", response_class=HTMLResponse)
@@ -1134,10 +1195,11 @@ def create_app(
         db: Session = Depends(db_dep),
     ) -> HTMLResponse:
         require_csrf(request, csrf_token)
+        selected_domain = mail_domain or app_settings.mail_domain
         try:
             generated_pairs = generate_aliases_for_domain(
                 db,
-                mail_domain or app_settings.mail_domain,
+                selected_domain,
                 count=count,
                 length=length,
             )
@@ -1154,7 +1216,15 @@ def create_app(
         return render_admin(
             request,
             "aliases.html",
-            paged_alias_context(db, "", "all", 1, 50, mail_domain or "", generated=generated),
+            paged_alias_context(
+                db,
+                "",
+                "all",
+                1,
+                50,
+                mail_domain_filter=selected_domain,
+                generated=generated,
+            ),
         )
 
     @app.post("/admin/aliases/{prefix}/token", response_class=HTMLResponse)

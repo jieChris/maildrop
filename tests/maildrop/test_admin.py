@@ -167,6 +167,67 @@ def test_admin_bulk_form_groups_mail_suffixes_by_root_domain():
     assert "aiprot.space-------" not in xoxo_group
 
 
+def test_admin_mail_suffix_filter_limits_options_to_selected_root_domain():
+    app_settings = Settings(
+        app_base_url="https://aiprot.space",
+        mail_domain="aiprot.space",
+        mail_domains="aiprot.space,ssn.aiprot.space,xoxo.edu.kg,xx.xoxo.edu.kg",
+        mail_registered_subdomains="a.exa.aiprot.space,a.xx.xoxo.edu.kg",
+        database_url="sqlite+pysqlite:///:memory:",
+        admin_username="admin",
+        admin_password="admin-secret",
+        ingest_token="ingest-secret",
+    )
+    client, _session_factory = client_with_db(app_settings=app_settings)
+
+    response = client.get("/admin?mail_domain_root=xoxo.edu.kg", headers=auth_header())
+
+    assert response.status_code == 200
+    assert '<select name="mail_domain_root" aria-label="根域名筛选">' in response.text
+    assert '<option value="xoxo.edu.kg" selected>xoxo.edu.kg</option>' in response.text
+    generation_select = response.text.split('<select name="mail_domain">', 1)[1].split("</select>", 1)[0]
+    list_filter_select = response.text.split(
+        '<select name="mail_domain_filter" aria-label="邮箱后缀筛选">',
+        1,
+    )[1].split("</select>", 1)[0]
+    assert '<option value="xoxo.edu.kg">xoxo.edu.kg-------0</option>' in generation_select
+    assert '<option value="xx.xoxo.edu.kg">xx.xoxo.edu.kg-------0</option>' in generation_select
+    assert '<option value="a.xx.xoxo.edu.kg">a.xx.xoxo.edu.kg-------0</option>' in generation_select
+    assert "aiprot.space" not in generation_select
+    assert '<option value="xoxo.edu.kg"' in list_filter_select
+    assert '<option value="xx.xoxo.edu.kg"' in list_filter_select
+    assert '<option value="a.xx.xoxo.edu.kg"' in list_filter_select
+    assert "aiprot.space" not in list_filter_select
+
+
+def test_admin_mail_root_filter_limits_alias_results_to_root_domain():
+    app_settings = Settings(
+        app_base_url="https://aiprot.space",
+        mail_domain="aiprot.space",
+        mail_domains="aiprot.space,xoxo.edu.kg,xx.xoxo.edu.kg",
+        mail_registered_subdomains="a.xx.xoxo.edu.kg",
+        database_url="sqlite+pysqlite:///:memory:",
+        admin_username="admin",
+        admin_password="admin-secret",
+        ingest_token="ingest-secret",
+    )
+    client, session_factory = client_with_db(app_settings=app_settings)
+    with session_factory() as db:
+        create_alias(db, "alpha", "aiprot.space")
+        create_alias(
+            db,
+            "bravo--xx-xoxo-edu-kg",
+            "xx.xoxo.edu.kg",
+            email="bravo@xx.xoxo.edu.kg",
+        )
+
+    response = client.get("/admin?mail_domain_root=xoxo.edu.kg", headers=auth_header())
+
+    assert response.status_code == 200
+    assert "bravo@xx.xoxo.edu.kg" in response.text
+    assert "alpha@aiprot.space" not in response.text
+
+
 def test_admin_bulk_generates_aliases_for_selected_subdomain():
     client, session_factory = client_with_db()
     form = client.get("/admin", headers=auth_header())
