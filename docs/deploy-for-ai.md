@@ -40,7 +40,7 @@ INGEST_TOKEN=<随机强token>
 
 ```text
 MAIL_DOMAINS=example.com,ssn.example.com,sso.example.com
-MAIL_REGISTERED_SUBDOMAINS=a.exa.example.com,b.exa.example.com
+MAIL_REGISTERED_SUBDOMAINS=a.exa.example.com,b.exa.example.com,exe.example.com,c.exe.example.com
 SPACESHIP_API_KEY=<只读APIKey>
 SPACESHIP_API_SECRET=<只读APISecret>
 SPACESHIP_DNS_DOMAIN=example.com
@@ -77,6 +77,16 @@ _dmarc.example.com.    TXT  "v=DMARC1; p=reject; sp=reject; adkim=s; aspf=s"
 *.exa.example.com.     TXT  "v=spf1 -all"
 exa.example.com.       MX   10 mail.example.com.
 exa.example.com.       TXT  "v=spf1 -all"
+```
+
+如果用户要用其他登记式后缀，例如 `exe.example.com` 或 `c.exe.example.com`，
+也要提醒添加对应 MX/TXT，例如：
+
+```text
+exe.example.com.       MX   10 mail.example.com.
+exe.example.com.       TXT  "v=spf1 -all"
+*.exe.example.com.     MX   10 mail.example.com.
+*.exe.example.com.     TXT  "v=spf1 -all"
 ```
 
 还要提醒：

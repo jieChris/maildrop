@@ -16,10 +16,10 @@
 <section class="panel">
   <form method="post" action="/admin/subdomains" class="toolbar">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-    <label>子域名前缀
-      <input type="text" name="subdomain" placeholder="例如 c 或 openai01" autocomplete="off" required>
+    <label>邮箱后缀
+      <input type="text" name="subdomain" placeholder="例如 c、c.exe 或 exe.aiprot.space" autocomplete="off" required>
     </label>
-    <span class="hint">自动生成 .{{ parent_domain }}</span>
+    <span class="hint">单段输入默认生成 .{{ parent_domain }}；带点输入按 {{ root_domain }} 下的后缀登记。</span>
     <button type="submit">新增</button>
   </form>
 </section>

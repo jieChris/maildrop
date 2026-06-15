@@ -23,7 +23,7 @@
 | 数据库密码 | 自己生成 | `POSTGRES_PASSWORD` 和 `DATABASE_URL` 里必须一致 |
 | Ingest Token | 自己生成 | Postfix 投递邮件到应用时使用 |
 | 固定邮箱后缀 | 可空 | 例如 `ssn.example.com,sso.example.com` |
-| exa 登记式子域名 | 可空 | 例如 `a.exa.example.com,b.exa.example.com` |
+| 登记式子域名 | 可空 | 例如 `a.exa.example.com,exe.example.com,c.exe.example.com` |
 | Spaceship API Key | 可空 | 只用于读取 TXT 自动登记子域名 |
 | Spaceship API Secret | 可空 | 只用于读取 TXT 自动登记子域名 |
 
@@ -60,6 +60,15 @@ openssl rand -hex 24
 | `*.exa` | `TXT` | `v=spf1 -all` | 留空 |
 | `exa` | `MX` | `mail.example.com.` | `10` |
 | `exa` | `TXT` | `v=spf1 -all` | 留空 |
+
+如果你还要使用 `exe.example.com` 或 `c.exe.example.com`，也要加对应 DNS：
+
+| 主机 | 类型 | 值 | 优先级 |
+| --- | --- | --- | --- |
+| `exe` | `MX` | `mail.example.com.` | `10` |
+| `exe` | `TXT` | `v=spf1 -all` | 留空 |
+| `*.exe` | `MX` | `mail.example.com.` | `10` |
+| `*.exe` | `TXT` | `v=spf1 -all` | 留空 |
 
 注意：
 
@@ -103,7 +112,7 @@ POSTGRES_PASSWORD=你的数据库密码
 MAIL_DOMAIN=example.com
 ```
 
-系统会根据它推导登记式子域名父级：`exa.example.com`。
+系统会根据它保留兼容默认父级：输入 `c` 会登记为 `c.exa.example.com`。
 
 ### `MAIL_DOMAINS`
 
@@ -125,7 +134,7 @@ MAIL_DOMAINS=example.com,ssn.example.com,sso.example.com,wow.example.com
 
 ### `MAIL_REGISTERED_SUBDOMAINS`
 
-预置的 `exa` 登记式后缀。可以为空：
+预置的登记式后缀。可以为空：
 
 ```dotenv
 MAIL_REGISTERED_SUBDOMAINS=
@@ -134,7 +143,7 @@ MAIL_REGISTERED_SUBDOMAINS=
 如果一开始就要允许这些后缀：
 
 ```dotenv
-MAIL_REGISTERED_SUBDOMAINS=a.exa.example.com,b.exa.example.com
+MAIL_REGISTERED_SUBDOMAINS=a.exa.example.com,b.exa.example.com,exe.example.com,c.exe.example.com
 ```
 
 后续也可以在后台新增：
@@ -144,6 +153,12 @@ https://example.com/admin/subdomains
 ```
 
 后台新增的子域名会写入数据库，不会自动写回 `.env.maildrop`。
+
+后台新增时：
+
+- 输入 `c`：新增 `c.exa.example.com`。
+- 输入 `exe.example.com`：新增 `exe.example.com`。
+- 输入 `c.exe`：新增 `c.exe.example.com`。
 
 ## 5. Spaceship API 自动同步怎么填
 

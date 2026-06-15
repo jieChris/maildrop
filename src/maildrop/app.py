@@ -50,7 +50,6 @@ from maildrop.spaceship import SpaceshipDnsError, SpaceshipDnsSyncClient
 
 DEFAULT_MAX_MESSAGE_BYTES = 26_214_400
 ALIAS_ALPHABET = string.ascii_lowercase + string.digits
-REGISTERED_SUBDOMAIN_PARENT = "exa.aiprot.space"
 REGISTERED_SUBDOMAIN_LABEL_RE = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$")
 LOCAL_INGEST_HOSTS = frozenset({"127.0.0.1", "::1", "testclient"})
 LOCAL_INGEST_NETWORKS = tuple(
@@ -225,14 +224,28 @@ def create_app(
         return f"exa.{app_settings.mail_domain.strip().lower()}"
 
     def normalize_registered_subdomain(value: str) -> str:
-        clean = value.strip().lower().rstrip(".")
+        clean = value.strip().lower().strip(".")
+        root_domain = app_settings.mail_domain.strip().lower().rstrip(".")
         parent = registered_subdomain_parent()
-        suffix = f".{parent}"
-        if clean.endswith(suffix):
-            clean = clean[: -len(suffix)]
-        if "." in clean or not REGISTERED_SUBDOMAIN_LABEL_RE.fullmatch(clean):
+
+        if not clean or clean == root_domain:
             raise ValueError("invalid subdomain")
-        return f"{clean}.{parent}"
+        if clean.endswith(f".{root_domain}"):
+            domain = clean
+        elif "." in clean:
+            if len(clean.split(".")) != 2:
+                raise ValueError("invalid subdomain")
+            domain = f"{clean}.{root_domain}"
+        else:
+            domain = f"{clean}.{parent}"
+
+        if domain == root_domain or not domain.endswith(f".{root_domain}"):
+            raise ValueError("invalid subdomain")
+        relative = domain[: -(len(root_domain) + 1)]
+        labels = relative.split(".")
+        if not labels or any(not REGISTERED_SUBDOMAIN_LABEL_RE.fullmatch(label) for label in labels):
+            raise ValueError("invalid subdomain")
+        return domain
 
     def alias_count_for_domain(db: Session, domain: str) -> int:
         return int(
@@ -287,6 +300,7 @@ def create_app(
             "title": "子域名管理",
             "subdomains": rows,
             "parent_domain": registered_subdomain_parent(),
+            "root_domain": app_settings.mail_domain.strip().lower(),
             "spaceship_enabled": spaceship_api_is_configured(),
             "notice": notice,
         }

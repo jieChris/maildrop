@@ -13,7 +13,7 @@ Maildrop 是一个轻量自托管收信服务，用 Postfix 接收 catch-all 邮
 - 未登记前缀：进入“未登记邮件”列表，不自动创建 alias。
 - 管理分类：后台按 `未导出`、`已导出`、`已删除` 管理邮箱别名。
 - 收件管理器：`/xxxmailmanage` 可导入邮箱和 API 链接，并标记 `待消耗`、`已消耗`、`错误`。
-- 子域名管理：后台可登记 `*.exa.<domain>` 风格的子域名后缀，并分别批量生成和管理。
+- 子域名管理：后台可登记 `*.exa.<domain>`、`*.exe.<domain>` 等主域下的邮箱后缀，并分别批量生成和管理。
 - Spaceship 同步：可用只读 API 扫描 `openai-domain-verification=` TXT，自动登记对应 `exa` 子域名。
 
 当前仓库中的生产示例使用 `aiprot.space`。如果部署到别的域名，请按 `docs/deploy-from-scratch.md` 替换域名和 IP。

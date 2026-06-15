@@ -1,5 +1,6 @@
 from pathlib import Path
 import os
+import re
 import subprocess
 import sys
 import textwrap
@@ -8,6 +9,8 @@ import textwrap
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "scripts" / "maildrop-production-check.sh"
 DOCKERFILE = ROOT / "Dockerfile"
+POSTFIX_DOMAINS = ROOT / "deploy" / "postfix" / "virtual_mailbox_domains_regexp"
+POSTFIX_RECIPIENTS = ROOT / "deploy" / "postfix" / "virtual_mailbox_regexp"
 
 
 def _write_executable(path: Path, content: str) -> None:
@@ -154,6 +157,29 @@ def test_dockerfile_includes_alembic_migration_files():
 
     assert "COPY alembic.ini /app/" in dockerfile
     assert "COPY migrations /app/migrations" in dockerfile
+
+
+def _regexp_table_matches(path: Path, value: str) -> bool:
+    for line in path.read_text(encoding="utf-8").splitlines():
+        clean = line.strip()
+        if not clean or clean.startswith("#"):
+            continue
+        pattern = clean.split()[0]
+        if pattern.startswith("/") and pattern.endswith("/"):
+            pattern = pattern[1:-1]
+        if re.match(pattern, value):
+            return True
+    return False
+
+
+def test_postfix_templates_allow_custom_subdomains_under_mail_domain():
+    assert _regexp_table_matches(POSTFIX_DOMAINS, "exe.aiprot.space")
+    assert _regexp_table_matches(POSTFIX_DOMAINS, "c.exe.aiprot.space")
+    assert not _regexp_table_matches(POSTFIX_DOMAINS, "evil.example.com")
+
+    assert _regexp_table_matches(POSTFIX_RECIPIENTS, "alpha@exe.aiprot.space")
+    assert _regexp_table_matches(POSTFIX_RECIPIENTS, "alpha@c.exe.aiprot.space")
+    assert not _regexp_table_matches(POSTFIX_RECIPIENTS, "alpha@evil.example.com")
 
 
 def test_production_check_warns_when_old_mx_records_remain(tmp_path):

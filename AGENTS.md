@@ -204,7 +204,9 @@ https://<domain>/xxxmailmanage
 https://<domain>/admin/subdomains
 ```
 
-新增 `c.exa.<domain>` 时，在子域名管理里输入 `c`。DNS 已配置 `*.exa` 后，不需要再改 DNS。
+新增 `c.exa.<domain>` 时，在子域名管理里输入 `c`。新增 `exe.<domain>` 时输入
+完整后缀 `exe.<domain>`；新增 `c.exe.<domain>` 时可输入 `c.exe`。
+DNS 仍需配置对应 MX，后台登记不会自动修改 DNS。
 
 如果配置了 Spaceship API，可点击“从 Spaceship TXT 记录同步”。AI 应提醒部署者：
 该按钮只读取 `openai-domain-verification=` TXT，不会修改 Spaceship DNS。

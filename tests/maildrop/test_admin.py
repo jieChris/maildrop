@@ -291,6 +291,75 @@ def test_admin_can_register_exa_subdomain_from_ui_and_use_it_for_generation():
         assert alias.prefix == route_key
 
 
+def test_admin_can_register_custom_subdomain_suffix_from_ui_and_use_it_for_generation():
+    client, session_factory = client_with_db()
+    form = client.get("/admin/subdomains", headers=auth_header())
+    csrf_token = csrf_token_from(form.text)
+
+    response = client.post(
+        "/admin/subdomains",
+        data={"csrf_token": csrf_token, "subdomain": ".exe.aiprot.space"},
+        headers=auth_header(),
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    admin = client.get("/admin", headers=auth_header())
+    assert '<option value="exe.aiprot.space">exe.aiprot.space-------0</option>' in admin.text
+    csrf_token = csrf_token_from(admin.text)
+    generated = client.post(
+        "/admin/aliases/bulk",
+        data={
+            "count": "1",
+            "length": "8",
+            "mail_domain": "exe.aiprot.space",
+            "csrf_token": csrf_token,
+        },
+        headers=auth_header(),
+    )
+
+    assert generated.status_code == 200
+    match = re.search(
+        r"([a-z0-9]{8})@exe\.aiprot\.space https://aiprot\.space/api/inbox/([a-z0-9]{8}--exe-aiprot-space)/latest\.txt\?token=([A-Za-z0-9_-]+)",
+        generated.text,
+    )
+    assert match is not None
+    local_part, route_key, token = match.groups()
+    assert route_key == f"{local_part}--exe-aiprot-space"
+    client.post(
+        "/internal/ingest",
+        content=RAW,
+        headers={
+            "X-Envelope-Recipient": f"{local_part}@exe.aiprot.space",
+            "X-Ingest-Token": "ingest-secret",
+        },
+    )
+    latest = client.get(f"/api/inbox/{route_key}/latest.txt?token={token}")
+    assert latest.status_code == 200
+    assert f"To: {local_part}@exe.aiprot.space" in latest.text
+    with session_factory() as db:
+        alias = db.query(Alias).filter_by(email=f"{local_part}@exe.aiprot.space").one()
+        assert alias.prefix == route_key
+
+
+def test_admin_can_register_relative_custom_subdomain_suffix():
+    client, session_factory = client_with_db()
+    form = client.get("/admin/subdomains", headers=auth_header())
+    csrf_token = csrf_token_from(form.text)
+
+    response = client.post(
+        "/admin/subdomains",
+        data={"csrf_token": csrf_token, "subdomain": "c.exe"},
+        headers=auth_header(),
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    with session_factory() as db:
+        stored = db.query(RegisteredSubdomain).filter_by(domain="c.exe.aiprot.space").one()
+        assert stored.domain == "c.exe.aiprot.space"
+
+
 def test_admin_rejects_invalid_registered_exa_subdomain_names():
     client, _session_factory = client_with_db()
     form = client.get("/admin/subdomains", headers=auth_header())
@@ -299,6 +368,21 @@ def test_admin_rejects_invalid_registered_exa_subdomain_names():
     response = client.post(
         "/admin/subdomains",
         data={"csrf_token": csrf_token, "subdomain": "bad/name"},
+        headers=auth_header(),
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "invalid subdomain"
+
+
+def test_admin_rejects_registered_subdomain_outside_mail_domain():
+    client, _session_factory = client_with_db()
+    form = client.get("/admin/subdomains", headers=auth_header())
+    csrf_token = csrf_token_from(form.text)
+
+    response = client.post(
+        "/admin/subdomains",
+        data={"csrf_token": csrf_token, "subdomain": "evil.example.com"},
         headers=auth_header(),
     )
 

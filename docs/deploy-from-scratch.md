@@ -33,6 +33,15 @@ exa.example.com.       MX   10 mail.example.com.
 exa.example.com.       TXT  "v=spf1 -all"
 ```
 
+如果还要使用 `exe.example.com` 或 `c.exe.example.com`，也要添加：
+
+```text
+exe.example.com.       MX   10 mail.example.com.
+exe.example.com.       TXT  "v=spf1 -all"
+*.exe.example.com.     MX   10 mail.example.com.
+*.exe.example.com.     TXT  "v=spf1 -all"
+```
+
 ## 2. 安装系统依赖
 
 ```bash
@@ -129,7 +138,7 @@ while IFS= read -r line; do
 done < deploy/postfix/main.cf.maildrop
 ```
 
-如果使用 `exa` 通配子域名，也要把这两个文件中的 `aiprot.space` 替换为你的域名：
+如果使用主域下的登记式子域名，也要把这两个文件中的 `aiprot.space` 替换为你的域名：
 
 ```bash
 install -m 0644 deploy/postfix/virtual_mailbox_domains_regexp /etc/postfix/virtual_mailbox_domains_regexp

@@ -87,7 +87,7 @@ TTL: 默认或 20/30 分钟
 MAIL_DOMAINS=example.com,ssn.example.com,sso.example.com
 ```
 
-## exa 通配子域名
+## 登记式通配子域名
 
 如果要支持后台登记式子域名，例如：
 
@@ -95,6 +95,8 @@ MAIL_DOMAINS=example.com,ssn.example.com,sso.example.com
 a.exa.example.com
 b.exa.example.com
 c.exa.example.com
+exe.example.com
+c.exe.example.com
 ```
 
 在 Spaceship 添加：
@@ -124,6 +126,37 @@ c.exa.example.com
 - `*.exa.example.com` 覆盖 `a.exa.example.com`、`b.exa.example.com` 等单级/多级查询的 DNS 响应，实际是否可用由 Maildrop 后台登记控制。
 - `exa.example.com` 本身不是 `*.exa.example.com`，所以需要单独添加 `exa` 的 MX/TXT。
 - Maildrop 后台 `/admin/subdomains` 新增 `c` 后，才会允许生成 `@c.exa.example.com` 邮箱。
+
+后台也可以登记其他主域下的邮箱后缀：
+
+- 输入 `exe.example.com`，新增 `@exe.example.com` 邮箱后缀。
+- 输入 `c.exe`，新增 `@c.exe.example.com` 邮箱后缀。
+- 输入 `c` 仍按兼容规则新增 `@c.exa.example.com` 邮箱后缀。
+
+如果要让 `exe.example.com` 或 `c.exe.example.com` 真正收到外部邮件，DNS 也要有对应 MX：
+
+```text
+主机: exe
+类型: MX
+值: mail.example.com.
+优先级: 10
+
+主机: exe
+类型: TXT
+值: v=spf1 -all
+
+主机: *.exe
+类型: MX
+值: mail.example.com.
+优先级: 10
+
+主机: *.exe
+类型: TXT
+值: v=spf1 -all
+```
+
+如果某个具体主机名已经有 TXT 验证记录，例如 `abc.exe TXT openai-domain-verification=...`，
+通配 MX 可能不会覆盖它。此时需要给 `abc.exe` 单独补一条 MX。
 
 ## DNS 验证命令
 
