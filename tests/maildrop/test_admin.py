@@ -94,6 +94,30 @@ def test_admin_bulk_generates_aliases_and_latest_links_with_csrf():
     assert response.text.count("/latest.txt?token=") >= 2
 
 
+def test_admin_generated_aliases_have_copy_and_export_controls():
+    client, _session_factory = client_with_db()
+    form = client.get("/admin", headers=auth_header())
+    csrf_token = csrf_token_from(form.text)
+
+    response = client.post(
+        "/admin/aliases/bulk",
+        data={"count": "2", "length": "8", "csrf_token": csrf_token},
+        headers=auth_header(),
+    )
+
+    assert response.status_code == 200
+    assert 'data-copy-target="generated-emails"' in response.text
+    assert 'data-download-target="generated-emails"' in response.text
+    assert 'data-copy-target="generated-alias-links"' in response.text
+    assert 'data-download-target="generated-alias-links"' in response.text
+    email_list = response.text.split('id="generated-emails"', 1)[1].split("</textarea>", 1)[0]
+    assert email_list.count("@aiprot.space") == 2
+    assert "/api/inbox/" not in email_list
+    alias_links = response.text.split('id="generated-alias-links"', 1)[1].split("</textarea>", 1)[0]
+    assert alias_links.count("@aiprot.space") == 2
+    assert alias_links.count("/api/inbox/") == 2
+
+
 def test_admin_bulk_form_lists_configured_mail_suffixes():
     client, _session_factory = client_with_db()
 
