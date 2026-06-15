@@ -10,8 +10,12 @@
     <input type="search" name="q" value="{{ q }}" placeholder="搜索前缀或邮箱">
     <select name="mail_domain_filter" aria-label="邮箱后缀筛选">
       <option value="">全部后缀</option>
-      {% for domain in mail_domains %}
-      <option value="{{ domain }}" {{ 'selected' if mail_domain_filter == domain else '' }}>{{ domain }}</option>
+      {% for group in mail_domain_option_groups %}
+      <optgroup label="{{ group.root }}">
+        {% for option in group.options %}
+        <option value="{{ option.domain }}" {{ 'selected' if mail_domain_filter == option.domain else '' }}>{{ option.domain }}</option>
+        {% endfor %}
+      </optgroup>
       {% endfor %}
     </select>
     <input type="number" name="page_size" min="1" max="200" value="{{ pagination.page_size }}" aria-label="每页数量">
@@ -35,8 +39,12 @@
     <label>前缀长度 <input type="number" name="length" min="6" max="32" value="12"></label>
     <label>邮箱后缀
       <select name="mail_domain">
-        {% for option in mail_domain_options %}
-        <option value="{{ option.domain }}">{{ option.domain }}-------{{ option.alias_count }}</option>
+        {% for group in mail_domain_option_groups %}
+        <optgroup label="{{ group.root }}">
+          {% for option in group.options %}
+          <option value="{{ option.domain }}">{{ option.domain }}-------{{ option.alias_count }}</option>
+          {% endfor %}
+        </optgroup>
         {% endfor %}
       </select>
     </label>

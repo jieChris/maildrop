@@ -285,6 +285,34 @@ def create_app(
             for domain in managed_mail_domains(db)
         ]
 
+    def mail_domain_group_roots(domains: tuple[str, ...]) -> tuple[str, ...]:
+        roots: list[str] = []
+        for domain in sorted(domains, key=lambda item: (item.count("."), len(item), item)):
+            if any(domain == root or domain.endswith(f".{root}") for root in roots):
+                continue
+            roots.append(domain)
+        return tuple(roots)
+
+    def mail_domain_group_for(domain: str, roots: tuple[str, ...]) -> str:
+        matches = [root for root in roots if domain == root or domain.endswith(f".{root}")]
+        if not matches:
+            return domain
+        return max(matches, key=len)
+
+    def mail_domain_option_groups(db: Session) -> list[dict[str, object]]:
+        domains = managed_mail_domains(db)
+        roots = mail_domain_group_roots(domains)
+        groups: dict[str, list[dict[str, object]]] = {root: [] for root in roots}
+        for option in mail_domain_options(db):
+            domain = str(option["domain"])
+            root = mail_domain_group_for(domain, roots)
+            groups.setdefault(root, []).append(option)
+        return [
+            {"root": root, "options": options}
+            for root, options in groups.items()
+            if options
+        ]
+
     def subdomain_context(db: Session, notice: str = "") -> dict[str, object]:
         env_domains = set(app_settings.registered_mail_subdomains)
         db_domains = list(
@@ -736,6 +764,7 @@ def create_app(
             "category": category,
             "mail_domains": managed_mail_domains(db),
             "mail_domain_options": mail_domain_options(db),
+            "mail_domain_option_groups": mail_domain_option_groups(db),
             "mail_domain_filter": mail_domain_filter.strip().lower(),
             "pagination": pagination(page, page_size, total),
         }

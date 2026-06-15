@@ -136,6 +136,37 @@ def test_admin_bulk_form_shows_existing_alias_count_for_each_suffix():
     assert '<option value="sso.aiprot.space">sso.aiprot.space-------0</option>' in response.text
 
 
+def test_admin_bulk_form_groups_mail_suffixes_by_root_domain():
+    app_settings = Settings(
+        app_base_url="https://aiprot.space",
+        mail_domain="aiprot.space",
+        mail_domains="aiprot.space,ssn.aiprot.space,xoxo.edu.kg,xx.xoxo.edu.kg",
+        mail_registered_subdomains="a.exa.aiprot.space,a.xx.xoxo.edu.kg",
+        database_url="sqlite+pysqlite:///:memory:",
+        admin_username="admin",
+        admin_password="admin-secret",
+        ingest_token="ingest-secret",
+    )
+    client, _session_factory = client_with_db(app_settings=app_settings)
+
+    response = client.get("/admin", headers=auth_header())
+
+    assert response.status_code == 200
+    assert '<optgroup label="aiprot.space">' in response.text
+    assert '<optgroup label="xoxo.edu.kg">' in response.text
+    generation_select = response.text.split('<select name="mail_domain">', 1)[1].split("</select>", 1)[0]
+    aiprot_group = generation_select.split('<optgroup label="aiprot.space">', 1)[1].split("</optgroup>", 1)[0]
+    xoxo_group = generation_select.split('<optgroup label="xoxo.edu.kg">', 1)[1].split("</optgroup>", 1)[0]
+    assert '<option value="aiprot.space">aiprot.space-------0</option>' in aiprot_group
+    assert '<option value="ssn.aiprot.space">ssn.aiprot.space-------0</option>' in aiprot_group
+    assert '<option value="a.exa.aiprot.space">a.exa.aiprot.space-------0</option>' in aiprot_group
+    assert "xoxo.edu.kg" not in aiprot_group
+    assert '<option value="xoxo.edu.kg">xoxo.edu.kg-------0</option>' in xoxo_group
+    assert '<option value="xx.xoxo.edu.kg">xx.xoxo.edu.kg-------0</option>' in xoxo_group
+    assert '<option value="a.xx.xoxo.edu.kg">a.xx.xoxo.edu.kg-------0</option>' in xoxo_group
+    assert "aiprot.space-------" not in xoxo_group
+
+
 def test_admin_bulk_generates_aliases_for_selected_subdomain():
     client, session_factory = client_with_db()
     form = client.get("/admin", headers=auth_header())
