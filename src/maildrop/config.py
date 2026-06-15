@@ -25,6 +25,10 @@ class Settings(BaseSettings):
         default="",
         alias="SPACESHIP_AUTO_REGISTER_TXT_PREFIX",
     )
+    spaceship_auto_register_parents: str = Field(
+        default="",
+        alias="SPACESHIP_AUTO_REGISTER_PARENTS",
+    )
 
     model_config = SettingsConfigDict(
         env_file=".env.maildrop",
@@ -63,6 +67,23 @@ class Settings(BaseSettings):
         domains = [self.mail_domain]
         domains.extend(part.strip() for part in self.mail_domains.split(","))
         domains.extend(self.registered_mail_subdomains)
+        return self._clean_domains(domains)
+
+    @property
+    def spaceship_auto_register_parent_domains(self) -> tuple[str, ...]:
+        root_domain = self.mail_domain.strip().lower().rstrip(".")
+        configured = self._clean_domains(self.spaceship_auto_register_parents.split(","))
+        if not configured:
+            return (f"exa.{root_domain}",)
+
+        domains: list[str] = []
+        for domain in configured:
+            clean = domain.strip().lower().strip(".")
+            if not clean:
+                continue
+            if "." not in clean:
+                clean = f"{clean}.{root_domain}"
+            domains.append(clean)
         return self._clean_domains(domains)
 
     @staticmethod

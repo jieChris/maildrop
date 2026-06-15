@@ -216,10 +216,14 @@ DNS 只负责把邮件送到服务器。还需要在 Maildrop 后台：
 主机: urxg.exa
 类型: TXT
 值: openai-domain-verification=xxxx
+
+主机: abcd.exe
+类型: TXT
+值: openai-domain-verification=yyyy
 ```
 
 可以让 Maildrop 后台读取 Spaceship DNS 记录，并自动把
-`urxg.exa.example.com` 登记为可生成邮箱的子域名。
+`urxg.exa.example.com`、`abcd.exe.example.com` 登记为可生成邮箱的子域名。
 
 ### API 权限
 
@@ -235,14 +239,29 @@ dnsrecords:read
 
 ### 环境变量
 
-在服务器 `.env.maildrop` 中配置以下四项；它们都需要显式填写，同步功能才会启用：
+在服务器 `.env.maildrop` 中配置以下项；前四项需要显式填写，同步功能才会启用：
 
 ```dotenv
 SPACESHIP_API_KEY=你的只读 API Key
 SPACESHIP_API_SECRET=你的只读 API Secret
 SPACESHIP_DNS_DOMAIN=example.com
 SPACESHIP_AUTO_REGISTER_TXT_PREFIX=openai-domain-verification=
+SPACESHIP_AUTO_REGISTER_PARENTS=exa,exe
 ```
+
+`SPACESHIP_AUTO_REGISTER_PARENTS` 控制要扫描哪些父级后缀。可以写短名：
+
+```dotenv
+SPACESHIP_AUTO_REGISTER_PARENTS=exa,exe
+```
+
+也可以写完整域名：
+
+```dotenv
+SPACESHIP_AUTO_REGISTER_PARENTS=exa.example.com,exe.example.com
+```
+
+如果留空，系统为了兼容旧配置，只扫描 `exa.example.com`。
 
 修改后重启 app：
 
@@ -268,7 +287,7 @@ https://example.com/admin/subdomains
 系统会读取 `example.com` 的 DNS 记录，匹配：
 
 - 类型是 `TXT`
-- 主机名属于 `*.exa.example.com`
+- 主机名属于 `SPACESHIP_AUTO_REGISTER_PARENTS` 配置的父级，例如 `*.exa.example.com`、`*.exe.example.com`
 - TXT 值以 `openai-domain-verification=` 开头
 - 当前还没有登记到 Maildrop
 

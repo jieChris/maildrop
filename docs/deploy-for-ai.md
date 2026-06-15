@@ -45,6 +45,7 @@ SPACESHIP_API_KEY=<只读APIKey>
 SPACESHIP_API_SECRET=<只读APISecret>
 SPACESHIP_DNS_DOMAIN=example.com
 SPACESHIP_AUTO_REGISTER_TXT_PREFIX=openai-domain-verification=
+SPACESHIP_AUTO_REGISTER_PARENTS=exa,exe
 ```
 
 如果用户没有给固定子域名：
@@ -147,6 +148,7 @@ SPACESHIP_API_KEY=
 SPACESHIP_API_SECRET=
 SPACESHIP_DNS_DOMAIN=example.com
 SPACESHIP_AUTO_REGISTER_TXT_PREFIX=openai-domain-verification=
+SPACESHIP_AUTO_REGISTER_PARENTS=exa,exe
 
 POSTGRES_DB=maildrop
 POSTGRES_USER=maildrop
@@ -240,7 +242,7 @@ git diff --check
 `MAIL_DOMAINS` 或 `SPACESHIP_*` 配置。此时用空值覆盖可选项后重跑：
 
 ```bash
-MAIL_DOMAINS='' MAIL_REGISTERED_SUBDOMAINS='' SPACESHIP_API_KEY='' SPACESHIP_API_SECRET='' SPACESHIP_DNS_DOMAIN='' SPACESHIP_AUTO_REGISTER_TXT_PREFIX='' .venv/bin/python -m pytest tests/maildrop -q
+MAIL_DOMAINS='' MAIL_REGISTERED_SUBDOMAINS='' SPACESHIP_API_KEY='' SPACESHIP_API_SECRET='' SPACESHIP_DNS_DOMAIN='' SPACESHIP_AUTO_REGISTER_TXT_PREFIX='' SPACESHIP_AUTO_REGISTER_PARENTS='' .venv/bin/python -m pytest tests/maildrop -q
 ```
 
 服务器必须运行：
@@ -273,7 +275,7 @@ scripts/maildrop-production-check.sh "$DOMAIN" "$SSH_HOST" "$SERVER_IP"
 
 ## 12. Spaceship TXT 自动登记验收
 
-只有当用户配置了四个 `SPACESHIP_*` 项才执行。
+只有当用户配置了 Spaceship API Key/Secret、DNS 域名和 TXT 前缀才执行。
 
 后台入口：
 

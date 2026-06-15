@@ -103,12 +103,14 @@ ssh "$SSH_HOST" "cd $APP_DIR && cp .env.maildrop.example .env.maildrop"
 - 可选 `SPACESHIP_API_SECRET`
 - 可选 `SPACESHIP_DNS_DOMAIN=$DOMAIN`
 - 可选 `SPACESHIP_AUTO_REGISTER_TXT_PREFIX=openai-domain-verification=`
+- 可选 `SPACESHIP_AUTO_REGISTER_PARENTS=exa,exe`
 
 不得把真实密码输出到对话中。
 
 如果部署者提供 Spaceship API，只要求只读权限：`domains:read` 和
-`dnsrecords:read`。同步功能需要四个 `SPACESHIP_*` 项都显式配置。不要要求
-或保存 `dnsrecords:write`，当前功能不需要写 DNS。
+`dnsrecords:read`。同步功能需要 API Key、API Secret、DNS 域名和 TXT 前缀都显式配置。
+`SPACESHIP_AUTO_REGISTER_PARENTS` 控制扫描父级，例如 `exa,exe`。不要要求或保存
+`dnsrecords:write`，当前功能不需要写 DNS。
 
 启动应用：
 
@@ -209,4 +211,5 @@ https://<domain>/admin/subdomains
 DNS 仍需配置对应 MX，后台登记不会自动修改 DNS。
 
 如果配置了 Spaceship API，可点击“从 Spaceship TXT 记录同步”。AI 应提醒部署者：
-该按钮只读取 `openai-domain-verification=` TXT，不会修改 Spaceship DNS。
+该按钮只读取 `SPACESHIP_AUTO_REGISTER_PARENTS` 父级下的 `openai-domain-verification=` TXT，
+不会修改 Spaceship DNS。

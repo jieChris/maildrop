@@ -92,6 +92,24 @@ def test_spaceship_sync_settings_are_blank_until_explicitly_configured():
 
     assert settings.spaceship_dns_domain == ""
     assert settings.spaceship_auto_register_txt_prefix == ""
+    assert settings.spaceship_auto_register_parent_domains == ("exa.aiprot.space",)
+
+
+def test_settings_parses_spaceship_auto_register_parent_domains():
+    settings = Settings(
+        app_base_url="https://aiprot.space",
+        mail_domain="aiprot.space",
+        database_url="sqlite+pysqlite:///:memory:",
+        admin_username="admin",
+        admin_password="admin-secret",
+        ingest_token="ingest-secret",
+        spaceship_auto_register_parents="exa, exe.aiprot.space",
+    )
+
+    assert settings.spaceship_auto_register_parent_domains == (
+        "exa.aiprot.space",
+        "exe.aiprot.space",
+    )
 
 
 def test_settings_rejects_non_positive_message_limit():

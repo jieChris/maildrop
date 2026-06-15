@@ -29,7 +29,7 @@
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <button type="submit" {{ '' if spaceship_enabled else 'disabled' }}>从 Spaceship TXT 记录同步</button>
     <span class="hint">
-      读取 {{ parent_domain }} 下 openai-domain-verification TXT，自动登记未存在的子域名。
+      读取 {{ sync_parent_domains|join(', ') }} 下 openai-domain-verification TXT，自动登记未存在的子域名。
       {% if not spaceship_enabled %}未完整配置 Spaceship API Key/Secret、DNS 域名和 TXT 前缀。{% endif %}
     </span>
   </form>

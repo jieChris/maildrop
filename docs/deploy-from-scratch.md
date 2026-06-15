@@ -87,6 +87,7 @@ SPACESHIP_API_KEY=
 SPACESHIP_API_SECRET=
 SPACESHIP_DNS_DOMAIN=example.com
 SPACESHIP_AUTO_REGISTER_TXT_PREFIX=openai-domain-verification=
+SPACESHIP_AUTO_REGISTER_PARENTS=exa,exe
 ```
 
 如果已经确定要预置子域名，可设置：
@@ -99,7 +100,8 @@ MAIL_REGISTERED_SUBDOMAINS=a.exa.example.com,b.exa.example.com
 
 如果要让后台从 Spaceship 自动同步 OpenAI TXT 验证子域名，必须显式配置
 `SPACESHIP_API_KEY`、`SPACESHIP_API_SECRET`、`SPACESHIP_DNS_DOMAIN` 和
-`SPACESHIP_AUTO_REGISTER_TXT_PREFIX`。API Key 只需要 `domains:read` 和
+`SPACESHIP_AUTO_REGISTER_TXT_PREFIX`。`SPACESHIP_AUTO_REGISTER_PARENTS` 控制要扫描的
+父级后缀，例如 `exa,exe`。API Key 只需要 `domains:read` 和
 `dnsrecords:read` 权限，不需要写权限。Spaceship 具体 DNS 和 API 配置见
 `docs/spaceship-dns.md`。
 

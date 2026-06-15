@@ -482,6 +482,69 @@ def test_admin_syncs_openai_txt_subdomains_from_spaceship():
     assert requests[0].headers["X-API-Secret"] == "secret"
 
 
+def test_admin_syncs_openai_txt_subdomains_from_multiple_spaceship_parents():
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "items": [
+                    {
+                        "type": "TXT",
+                        "name": "urxg.exa",
+                        "value": "openai-domain-verification=dv-exa",
+                    },
+                    {
+                        "type": "TXT",
+                        "name": "abcd.exe",
+                        "value": "openai-domain-verification=dv-exe",
+                    },
+                ],
+                "total": 2,
+            },
+        )
+
+    app_settings = Settings(
+        app_base_url="https://aiprot.space",
+        mail_domain="aiprot.space",
+        mail_domains="aiprot.space",
+        database_url="sqlite+pysqlite:///:memory:",
+        admin_username="admin",
+        admin_password="admin-secret",
+        ingest_token="ingest-secret",
+        spaceship_api_key="key",
+        spaceship_api_secret="secret",
+        spaceship_dns_domain="aiprot.space",
+        spaceship_auto_register_txt_prefix="openai-domain-verification=",
+        spaceship_auto_register_parents="exa,exe",
+    )
+    client, session_factory = client_with_db(
+        app_settings=app_settings,
+        spaceship_transport=httpx.MockTransport(handler),
+    )
+    form = client.get("/admin/subdomains", headers=auth_header())
+    csrf_token = csrf_token_from(form.text)
+
+    response = client.post(
+        "/admin/subdomains/sync-spaceship",
+        data={"csrf_token": csrf_token},
+        headers=auth_header(),
+    )
+
+    assert response.status_code == 200
+    assert "新增 2 个" in response.text
+    assert "urxg.exa.aiprot.space" in response.text
+    assert "abcd.exe.aiprot.space" in response.text
+    with session_factory() as db:
+        assert (
+            db.query(RegisteredSubdomain).filter_by(domain="urxg.exa.aiprot.space").one().domain
+            == "urxg.exa.aiprot.space"
+        )
+        assert (
+            db.query(RegisteredSubdomain).filter_by(domain="abcd.exe.aiprot.space").one().domain
+            == "abcd.exe.aiprot.space"
+        )
+
+
 def test_admin_spaceship_sync_requires_api_credentials():
     client, _session_factory = client_with_db()
     form = client.get("/admin/subdomains", headers=auth_header())

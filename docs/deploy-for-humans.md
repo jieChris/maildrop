@@ -169,15 +169,17 @@ SPACESHIP_API_KEY=
 SPACESHIP_API_SECRET=
 SPACESHIP_DNS_DOMAIN=example.com
 SPACESHIP_AUTO_REGISTER_TXT_PREFIX=openai-domain-verification=
+SPACESHIP_AUTO_REGISTER_PARENTS=exa,exe
 ```
 
-如果要用后台按钮自动登记 OpenAI 验证子域名，四项都要填：
+如果要用后台按钮自动登记 OpenAI 验证子域名，API Key/Secret、DNS 域名和 TXT 前缀都要填；父级列表按需要配置：
 
 ```dotenv
 SPACESHIP_API_KEY=你的只读APIKey
 SPACESHIP_API_SECRET=你的只读APISecret
 SPACESHIP_DNS_DOMAIN=example.com
 SPACESHIP_AUTO_REGISTER_TXT_PREFIX=openai-domain-verification=
+SPACESHIP_AUTO_REGISTER_PARENTS=exa,exe
 ```
 
 Spaceship API 权限只需要：
@@ -189,6 +191,18 @@ dnsrecords:read
 
 当前系统只读取 TXT 记录，不创建、不修改、不删除 DNS 记录，所以不需要
 `dnsrecords:write`。
+
+`SPACESHIP_AUTO_REGISTER_PARENTS` 是要自动扫描的父级后缀列表。可以写短名：
+
+```dotenv
+SPACESHIP_AUTO_REGISTER_PARENTS=exa,exe
+```
+
+也可以写完整域名：
+
+```dotenv
+SPACESHIP_AUTO_REGISTER_PARENTS=exa.example.com,exe.example.com
+```
 
 后台同步入口：
 

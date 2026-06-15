@@ -301,6 +301,7 @@ def create_app(
             "subdomains": rows,
             "parent_domain": registered_subdomain_parent(),
             "root_domain": app_settings.mail_domain.strip().lower(),
+            "sync_parent_domains": app_settings.spaceship_auto_register_parent_domains,
             "spaceship_enabled": spaceship_api_is_configured(),
             "notice": notice,
         }
@@ -325,16 +326,22 @@ def create_app(
         )
 
     def sync_spaceship_openai_subdomains(db: Session) -> str:
+        records = []
         try:
-            records = spaceship_sync_client().openai_verification_subdomains(
-                parent_domain=registered_subdomain_parent(),
-                txt_prefix=app_settings.spaceship_auto_register_txt_prefix,
-            )
+            client = spaceship_sync_client()
+            for parent_domain in app_settings.spaceship_auto_register_parent_domains:
+                records.extend(
+                    client.openai_verification_subdomains(
+                        parent_domain=parent_domain,
+                        txt_prefix=app_settings.spaceship_auto_register_txt_prefix,
+                    )
+                )
         except SpaceshipDnsError as exc:
             raise HTTPException(status_code=502, detail=str(exc)) from exc
 
         existing = set(managed_mail_domains(db))
         created: list[str] = []
+        seen_records: set[str] = set()
         skipped = 0
         for record in records:
             try:
@@ -342,11 +349,12 @@ def create_app(
             except ValueError:
                 skipped += 1
                 continue
-            if domain in existing:
+            if domain in existing or domain in seen_records:
                 skipped += 1
                 continue
             db.add(RegisteredSubdomain(domain=domain))
             existing.add(domain)
+            seen_records.add(domain)
             created.append(domain)
         db.commit()
         if created:
