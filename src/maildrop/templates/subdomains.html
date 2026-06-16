@@ -28,8 +28,14 @@
   <form method="post" action="/admin/subdomains/sync-spaceship" class="toolbar">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <button type="submit" {{ '' if spaceship_enabled else 'disabled' }}>从 Spaceship TXT 记录同步</button>
+    <button
+      type="submit"
+      formaction="/admin/subdomains/sync-spaceship-cleanup"
+      onclick="return confirm('会删除 Spaceship 中已不存在且没有邮箱的后台登记子域名，已有邮箱的会保留。继续吗？')"
+      {{ '' if spaceship_enabled else 'disabled' }}
+    >同步并清理</button>
     <span class="hint">
-      读取 {{ sync_parent_domains|join(', ') }} 下 openai-domain-verification TXT，自动登记未存在的子域名。
+      读取 {{ sync_parent_domains|join(', ') }} 下 openai-domain-verification TXT，自动登记未存在的子域名；清理模式会移除 DNS 已不存在且没有邮箱的后台登记。
       {% if not spaceship_enabled %}未完整配置 Spaceship API Key/Secret、DNS 域名和 TXT 前缀。{% endif %}
     </span>
   </form>
@@ -39,8 +45,14 @@
   <form method="post" action="/admin/subdomains/sync-cloudflare" class="toolbar">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <button type="submit" {{ '' if cloudflare_enabled else 'disabled' }}>从 Cloudflare TXT 记录同步</button>
+    <button
+      type="submit"
+      formaction="/admin/subdomains/sync-cloudflare-cleanup"
+      onclick="return confirm('会删除 Cloudflare 中已不存在且没有邮箱的后台登记子域名，已有邮箱的会保留。继续吗？')"
+      {{ '' if cloudflare_enabled else 'disabled' }}
+    >同步并清理</button>
     <span class="hint">
-      读取 {{ cloudflare_sync_parent_domains|join(', ') }} 下 openai-domain-verification TXT，自动登记未存在的子域名。
+      读取 {{ cloudflare_sync_parent_domains|join(', ') }} 下 openai-domain-verification TXT，自动登记未存在的子域名；清理模式会移除 DNS 已不存在且没有邮箱的后台登记。
       {% if not cloudflare_enabled %}未完整配置 Cloudflare API Token、Zone ID、DNS 域名和 TXT 前缀。{% endif %}
     </span>
   </form>

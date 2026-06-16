@@ -403,10 +403,23 @@ def create_app(
             transport=cloudflare_transport,
         )
 
-    def store_synced_subdomains(db: Session, records, provider_name: str) -> str:
+    def domain_is_under_any_parent(domain: str, parent_domains: tuple[str, ...]) -> bool:
+        clean_domain = domain.strip().lower().strip(".")
+        for parent in parent_domains:
+            clean_parent = parent.strip().lower().strip(".")
+            if clean_domain == clean_parent or clean_domain.endswith(f".{clean_parent}"):
+                return True
+        return False
+
+    def store_synced_subdomains(
+        db: Session,
+        records,
+        provider_name: str,
+        cleanup_parent_domains: tuple[str, ...] = (),
+    ) -> str:
         existing = set(managed_mail_domains(db))
         created: list[str] = []
-        seen_records: set[str] = set()
+        record_domains: set[str] = set()
         skipped = 0
         for record in records:
             try:
@@ -414,19 +427,56 @@ def create_app(
             except ValueError:
                 skipped += 1
                 continue
-            if domain in existing or domain in seen_records:
+            if domain in record_domains:
+                skipped += 1
+                continue
+            record_domains.add(domain)
+        for domain in sorted(record_domains):
+            if domain in existing:
                 skipped += 1
                 continue
             db.add(RegisteredSubdomain(domain=domain))
             existing.add(domain)
-            seen_records.add(domain)
             created.append(domain)
+
+        removed: list[str] = []
+        retained_with_aliases: list[str] = []
+        if cleanup_parent_domains:
+            db_subdomains = (
+                db.execute(select(RegisteredSubdomain).order_by(RegisteredSubdomain.domain.asc()))
+                .scalars()
+                .all()
+            )
+            for item in db_subdomains:
+                if item.domain in record_domains:
+                    continue
+                if not domain_is_under_any_parent(item.domain, cleanup_parent_domains):
+                    continue
+                if alias_count_for_domain(db, item.domain):
+                    retained_with_aliases.append(item.domain)
+                    continue
+                db.delete(item)
+                removed.append(item.domain)
         db.commit()
+        if cleanup_parent_domains:
+            parts: list[str] = []
+            if created:
+                parts.append(f"从 {provider_name} TXT 记录新增 {len(created)} 个：{', '.join(created)}")
+            if removed:
+                parts.append(f"删除 {len(removed)} 个：{', '.join(removed)}")
+            if retained_with_aliases:
+                parts.append(
+                    f"保留已有邮箱 {len(retained_with_aliases)} 个：{', '.join(retained_with_aliases)}"
+                )
+            if not parts:
+                parts.append("没有新增或删除子域名")
+            parts.append(f"跳过 {skipped} 个")
+            return "；".join(parts)
         if created:
             return f"从 {provider_name} TXT 记录新增 {len(created)} 个：{', '.join(created)}；跳过 {skipped} 个"
         return f"没有新增子域名；跳过 {skipped} 个"
 
-    def sync_spaceship_openai_subdomains(db: Session) -> str:
+    def sync_spaceship_openai_subdomains(db: Session, cleanup: bool = False) -> str:
         records = []
         try:
             client = spaceship_sync_client()
@@ -440,9 +490,10 @@ def create_app(
         except SpaceshipDnsError as exc:
             raise HTTPException(status_code=502, detail=str(exc)) from exc
 
-        return store_synced_subdomains(db, records, "Spaceship")
+        cleanup_parents = app_settings.spaceship_auto_register_parent_domains if cleanup else ()
+        return store_synced_subdomains(db, records, "Spaceship", cleanup_parents)
 
-    def sync_cloudflare_openai_subdomains(db: Session) -> str:
+    def sync_cloudflare_openai_subdomains(db: Session, cleanup: bool = False) -> str:
         records = []
         try:
             client = cloudflare_sync_client()
@@ -456,7 +507,8 @@ def create_app(
         except CloudflareDnsError as exc:
             raise HTTPException(status_code=502, detail=str(exc)) from exc
 
-        return store_synced_subdomains(db, records, "Cloudflare")
+        cleanup_parents = app_settings.cloudflare_auto_register_parent_domains if cleanup else ()
+        return store_synced_subdomains(db, records, "Cloudflare", cleanup_parents)
 
     def alias_route_key_for_recipient(db: Session, local_part: str, domain: str) -> str:
         clean_local = local_part.strip().lower()
@@ -975,6 +1027,17 @@ def create_app(
         notice = sync_spaceship_openai_subdomains(db)
         return render_admin(request, "subdomains.html", subdomain_context(db, notice=notice))
 
+    @app.post("/admin/subdomains/sync-spaceship-cleanup", response_class=HTMLResponse)
+    def admin_sync_spaceship_subdomains_cleanup(
+        request: Request,
+        csrf_token: str = Form(""),
+        _: str = Depends(require_admin),
+        db: Session = Depends(db_dep),
+    ) -> HTMLResponse:
+        require_csrf(request, csrf_token)
+        notice = sync_spaceship_openai_subdomains(db, cleanup=True)
+        return render_admin(request, "subdomains.html", subdomain_context(db, notice=notice))
+
     @app.post("/admin/subdomains/sync-cloudflare", response_class=HTMLResponse)
     def admin_sync_cloudflare_subdomains(
         request: Request,
@@ -984,6 +1047,17 @@ def create_app(
     ) -> HTMLResponse:
         require_csrf(request, csrf_token)
         notice = sync_cloudflare_openai_subdomains(db)
+        return render_admin(request, "subdomains.html", subdomain_context(db, notice=notice))
+
+    @app.post("/admin/subdomains/sync-cloudflare-cleanup", response_class=HTMLResponse)
+    def admin_sync_cloudflare_subdomains_cleanup(
+        request: Request,
+        csrf_token: str = Form(""),
+        _: str = Depends(require_admin),
+        db: Session = Depends(db_dep),
+    ) -> HTMLResponse:
+        require_csrf(request, csrf_token)
+        notice = sync_cloudflare_openai_subdomains(db, cleanup=True)
         return render_admin(request, "subdomains.html", subdomain_context(db, notice=notice))
 
     @app.post("/admin/subdomains/{subdomain_id}/delete")

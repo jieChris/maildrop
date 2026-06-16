@@ -804,6 +804,118 @@ def test_admin_syncs_openai_txt_subdomains_from_cloudflare():
     assert requests[0].headers["Authorization"] == "Bearer token"
 
 
+def test_admin_cloudflare_sync_cleanup_removes_missing_subdomains_without_aliases():
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "success": True,
+                "result": [
+                    {
+                        "type": "TXT",
+                        "name": "current.xx.xoxo.edu.kg",
+                        "content": "openai-domain-verification=dv-current",
+                    },
+                ],
+                "result_info": {"page": 1, "total_pages": 1},
+            },
+        )
+
+    app_settings = Settings(
+        app_base_url="https://aiprot.space",
+        mail_domain="aiprot.space",
+        mail_domains="aiprot.space,xoxo.edu.kg,xx.xoxo.edu.kg",
+        database_url="sqlite+pysqlite:///:memory:",
+        admin_username="admin",
+        admin_password="admin-secret",
+        ingest_token="ingest-secret",
+        cloudflare_api_token="token",
+        cloudflare_zone_id="zone-id",
+        cloudflare_dns_domain="xoxo.edu.kg",
+        cloudflare_auto_register_txt_prefix="openai-domain-verification=",
+        cloudflare_auto_register_parents="xx",
+    )
+    client, session_factory = client_with_db(
+        app_settings=app_settings,
+        cloudflare_transport=httpx.MockTransport(handler),
+    )
+    with session_factory() as db:
+        db.add(RegisteredSubdomain(domain="current.xx.xoxo.edu.kg"))
+        db.add(RegisteredSubdomain(domain="stale.xx.xoxo.edu.kg"))
+        db.add(RegisteredSubdomain(domain="outside.exa.xoxo.edu.kg"))
+        db.commit()
+    form = client.get("/admin/subdomains", headers=auth_header())
+    csrf_token = csrf_token_from(form.text)
+
+    response = client.post(
+        "/admin/subdomains/sync-cloudflare-cleanup",
+        data={"csrf_token": csrf_token},
+        headers=auth_header(),
+    )
+
+    assert response.status_code == 200
+    assert "删除 1 个" in response.text
+    assert "stale.xx.xoxo.edu.kg" in response.text
+    with session_factory() as db:
+        assert db.query(RegisteredSubdomain).filter_by(domain="current.xx.xoxo.edu.kg").one()
+        assert db.query(RegisteredSubdomain).filter_by(domain="outside.exa.xoxo.edu.kg").one()
+        assert db.query(RegisteredSubdomain).filter_by(domain="stale.xx.xoxo.edu.kg").one_or_none() is None
+
+
+def test_admin_cloudflare_sync_cleanup_keeps_missing_subdomains_with_aliases():
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "success": True,
+                "result": [],
+                "result_info": {"page": 1, "total_pages": 1},
+            },
+        )
+
+    app_settings = Settings(
+        app_base_url="https://aiprot.space",
+        mail_domain="aiprot.space",
+        mail_domains="aiprot.space,xoxo.edu.kg,xx.xoxo.edu.kg",
+        database_url="sqlite+pysqlite:///:memory:",
+        admin_username="admin",
+        admin_password="admin-secret",
+        ingest_token="ingest-secret",
+        cloudflare_api_token="token",
+        cloudflare_zone_id="zone-id",
+        cloudflare_dns_domain="xoxo.edu.kg",
+        cloudflare_auto_register_txt_prefix="openai-domain-verification=",
+        cloudflare_auto_register_parents="xx",
+    )
+    client, session_factory = client_with_db(
+        app_settings=app_settings,
+        cloudflare_transport=httpx.MockTransport(handler),
+    )
+    with session_factory() as db:
+        db.add(RegisteredSubdomain(domain="used.xx.xoxo.edu.kg"))
+        create_alias(
+            db,
+            "alpha--used-xx-xoxo-edu-kg",
+            "used.xx.xoxo.edu.kg",
+            email="alpha@used.xx.xoxo.edu.kg",
+        )
+        db.commit()
+    form = client.get("/admin/subdomains", headers=auth_header())
+    csrf_token = csrf_token_from(form.text)
+
+    response = client.post(
+        "/admin/subdomains/sync-cloudflare-cleanup",
+        data={"csrf_token": csrf_token},
+        headers=auth_header(),
+    )
+
+    assert response.status_code == 200
+    assert "保留已有邮箱 1 个" in response.text
+    assert "used.xx.xoxo.edu.kg" in response.text
+    with session_factory() as db:
+        assert db.query(RegisteredSubdomain).filter_by(domain="used.xx.xoxo.edu.kg").one()
+
+
 def test_admin_cloudflare_sync_requires_api_configuration():
     client, _session_factory = client_with_db()
     form = client.get("/admin/subdomains", headers=auth_header())
@@ -817,6 +929,34 @@ def test_admin_cloudflare_sync_requires_api_configuration():
 
     assert response.status_code == 400
     assert response.json()["detail"] == "cloudflare api is not configured"
+
+
+def test_admin_subdomain_page_offers_sync_cleanup_buttons():
+    app_settings = Settings(
+        app_base_url="https://aiprot.space",
+        mail_domain="aiprot.space",
+        mail_domains="aiprot.space,xoxo.edu.kg",
+        database_url="sqlite+pysqlite:///:memory:",
+        admin_username="admin",
+        admin_password="admin-secret",
+        ingest_token="ingest-secret",
+        spaceship_api_key="key",
+        spaceship_api_secret="secret",
+        spaceship_dns_domain="aiprot.space",
+        spaceship_auto_register_txt_prefix="openai-domain-verification=",
+        cloudflare_api_token="token",
+        cloudflare_zone_id="zone-id",
+        cloudflare_dns_domain="xoxo.edu.kg",
+        cloudflare_auto_register_txt_prefix="openai-domain-verification=",
+    )
+    client, _session_factory = client_with_db(app_settings=app_settings)
+
+    response = client.get("/admin/subdomains", headers=auth_header())
+
+    assert response.status_code == 200
+    assert 'formaction="/admin/subdomains/sync-spaceship-cleanup"' in response.text
+    assert 'formaction="/admin/subdomains/sync-cloudflare-cleanup"' in response.text
+    assert response.text.count("同步并清理") == 2
 
 
 def test_admin_bulk_rejects_unconfigured_mail_suffix():
